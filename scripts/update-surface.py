@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -111,6 +112,79 @@ def disk(im: Image.Image):
     cy = (miny + maxy) / 2
     r = min(maxx - minx, maxy - miny) / 2
     return cx, cy, r
+
+
+def tone_lut():
+    """Stretch the gray disk so spots stay dark and the photosphere stays warm."""
+    lut = []
+    for i in range(256):
+        t = (i - 88) / 150.0
+        if t < 0:
+            t = 0.0
+        elif t > 1:
+            t = 1.0
+        t = t ** 1.45
+        lut.append((int(10 + t * 245), int(3 + t * 170), int(1 + t * 62)))
+    return lut
+
+
+TONE = tone_lut()
+
+
+def paint_hemisphere(canvas: Image.Image, photo: Image.Image, l0: float, z_min: float) -> None:
+    """Project a full-disk photo onto the longitudes that faced Earth that day."""
+    found = disk(photo)
+    if not found:
+        print("  no disk")
+        return
+    cx, cy, radius = found
+    radius *= 1.02
+    if radius < 100:
+        print("  disk too small", round(radius))
+        return
+    src = photo.convert("L").load()
+    sw, sh = photo.size
+    dst = canvas.load()
+    # Longitude increases to solar east. Texture u = 0.5 - lon/360.
+    half = math.degrees(math.acos(max(-1.0, min(1.0, z_min)))) + 2
+    for my in range(H):
+        lat = math.radians(90.0 - (my / (H - 1)) * 180.0)
+        sinlat = math.sin(lat)
+        coslat = math.cos(lat)
+        iy = cy - radius * sinlat
+        if iy < 1 or iy > sh - 2:
+            continue
+        iy0 = int(iy)
+        fy = iy - iy0
+        for mx in range(W):
+            lon = (0.5 - mx / W) * 360.0
+            dlon = (lon - l0 + 540.0) % 360.0 - 180.0
+            if abs(dlon) > half:
+                continue
+            dlon_r = math.radians(dlon)
+            z = coslat * math.cos(dlon_r)
+            if z < z_min:
+                continue
+            ix = cx - radius * coslat * math.sin(dlon_r)
+            if ix < 1 or ix > sw - 2:
+                continue
+            ix0 = int(ix)
+            fx = ix - ix0
+            g = (
+                src[ix0, iy0] * (1 - fx) * (1 - fy)
+                + src[ix0 + 1, iy0] * fx * (1 - fy)
+                + src[ix0, iy0 + 1] * (1 - fx) * fy
+                + src[ix0 + 1, iy0 + 1] * fx * fy
+            )
+            if g < 28:
+                continue
+            color = TONE[int(g)]
+            if z_min <= 0 or z > z_min + 0.32:
+                dst[mx, my] = color
+            else:
+                fade = (z - z_min) / 0.32
+                old = dst[mx, my]
+                dst[mx, my] = tuple(int(old[c] * (1 - fade) + color[c] * fade) for c in range(3))
 
 
 def colorize(im: Image.Image) -> Image.Image:
@@ -251,5 +325,31 @@ def write_missions(rows: list) -> None:
     print("regions", len(sites))
 
 
+def paint_faces() -> None:
+    """Lay real full-disk photos on the sphere. Today covers the whole near side."""
+    meta = json.loads(META.read_text())
+    anchor = datetime.fromisoformat(meta["anchor"].replace("Z", "+00:00"))
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    anchor_l0 = float(meta["l0"])
+    canvas = Image.open(OUT).convert("RGB")
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    days = [0] if "--today" in sys.argv else list(range(24, 0, -3)) + [0]
+    for i in days:
+        when = (now - timedelta(days=i)).replace(hour=12)
+        print(f"face -{i} {when.date()}", flush=True)
+        photo = screenshot(when)
+        if photo is None:
+            continue
+        # Today owns the hemisphere you see on open. Older days fill the back.
+        z_min = 0.0 if i == 0 else 0.42
+        paint_hemisphere(canvas, photo, l0_at(when, anchor, anchor_l0), z_min)
+    canvas.save(OUT, "JPEG", quality=92, optimize=True)
+    print("wrote", OUT, OUT.stat().st_size, "bytes")
+
+
 if __name__ == "__main__":
-    main()
+    if "--face" in sys.argv:
+        paint_faces()
+    else:
+        main()

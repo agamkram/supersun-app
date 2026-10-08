@@ -120,8 +120,8 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=1", segments: 160 },
-  high: { map: "sun-2k.jpg?v=1", segments: 160 },
+  low: { map: "sun-2k.jpg?v=2", segments: 160 },
+  high: { map: "sun-2k.jpg?v=2", segments: 160 },
 };
 
 /** Filled from surface.json. L0 is the Carrington longitude facing Earth at `t`. */
