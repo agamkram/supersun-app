@@ -120,9 +120,11 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=2", segments: 160 },
-  high: { map: "sun-2k.jpg?v=2", segments: 160 },
+  low: { map: "sun-2k.jpg?v=3", segments: 224 },
+  high: { map: "sun-2k.jpg?v=3", segments: 224 },
 };
+/** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
+const LIMB_U = 0.62;
 
 /** Filled from surface.json. L0 is the Carrington longitude facing Earth at `t`. */
 let surfaceAnchor = {
@@ -515,9 +517,42 @@ export function createSunGlobe(canvas, options = {}) {
       material = null;
     }
 
-    // Unlit. Every face of the photosphere is bright; there is no night side.
-    material = new THREE.MeshBasicMaterial({ map });
-    material.color.setRGB(1, 1, 1);
+    // Keep the file's own bytes. The limb multiply is in that same space.
+    map.colorSpace = THREE.NoColorSpace;
+    map.needsUpdate = true;
+    // Flat photosphere. Limb darkening is view-dependent, so the rim stays the rim.
+    material = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: map },
+        uLimb: { value: LIMB_U },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormalW;
+        varying vec3 vViewW;
+        void main() {
+          vUv = uv;
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vNormalW = normalize(mat3(modelMatrix) * normal);
+          vViewW = normalize(cameraPosition - worldPos.xyz);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uMap;
+        uniform float uLimb;
+        varying vec2 vUv;
+        varying vec3 vNormalW;
+        varying vec3 vViewW;
+        void main() {
+          vec3 col = texture2D(uMap, vUv).rgb;
+          float mu = clamp(dot(normalize(vNormalW), normalize(vViewW)), 0.0, 1.0);
+          float limb = (1.0 - uLimb) + uLimb * mu;
+          gl_FragColor = vec4(col * limb, 1.0);
+        }
+      `,
+    });
+    material.toneMapped = false;
 
     mesh = new THREE.Mesh(
       new THREE.SphereGeometry(RADIUS, cfg.segments, cfg.segments),
@@ -823,7 +858,7 @@ export function createSunGlobe(canvas, options = {}) {
         0.83 - lastEclipseUmbra * 0.7
       );
     }
-    if (material) {
+    if (material && !material.isShaderMaterial) {
       const baseEm = lerp(o.emissive, e.emissive, t);
       material.emissiveIntensity = baseEm + lastEclipseUmbra * 0.08;
       if (material.emissive) {

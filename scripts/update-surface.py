@@ -21,7 +21,10 @@ OUT = ROOT / "sun-2k.jpg"
 META = ROOT / "surface.json"
 MISSIONS = ROOT / "missions.js"
 
-W, H = 2048, 1024
+W, H = 4096, 2048
+# Continuum limb darkening, fit to the HMI browse images. Divided out of the
+# map and put back in the viewer, so the dark rim stays on the silhouette.
+LD_U = 0.62
 DAYS = 27
 STRIP_DEG = 12.0
 # Synodic Carrington period. Central-meridian longitude decreases at this rate.
@@ -65,12 +68,12 @@ def l0_at(when: datetime, anchor: datetime, anchor_l0: float) -> float:
     return (anchor_l0 - DEG_PER_DAY * days) % 360.0
 
 
-def screenshot(when: datetime) -> Image.Image | None:
+def screenshot(when: datetime, size: int = 1024, scale: int = 2) -> Image.Image | None:
     date = when.strftime("%Y-%m-%dT%H:%M:%SZ")
     url = (
         "https://api.helioviewer.org/v2/takeScreenshot/"
-        f"?imageScale=2&layers=[{HMI},1,100]&events=&eventLabels=false"
-        f"&scale=false&date={date}&x0=0&y0=0&width=1024&height=1024"
+        f"?imageScale={scale}&layers=[{HMI},1,100]&events=&eventLabels=false"
+        f"&scale=false&date={date}&x0=0&y0=0&width={size}&height={size}"
         "&display=true&watermark=false"
     )
     try:
@@ -78,7 +81,7 @@ def screenshot(when: datetime) -> Image.Image | None:
     except Exception as exc:
         print("  miss", date, exc)
         return None
-    path = Path("/tmp") / f"sunstrip-{date}.png"
+    path = Path("/tmp") / f"sunstrip-{size}-{date}.png"
     path.write_bytes(raw)
     try:
         return Image.open(path).convert("RGB")
@@ -133,6 +136,8 @@ TONE = tone_lut()
 
 def paint_hemisphere(canvas: Image.Image, photo: Image.Image, l0: float, z_min: float) -> None:
     """Project a full-disk photo onto the longitudes that faced Earth that day."""
+    import numpy as np
+
     found = disk(photo)
     if not found:
         print("  no disk")
@@ -142,49 +147,28 @@ def paint_hemisphere(canvas: Image.Image, photo: Image.Image, l0: float, z_min: 
     if radius < 100:
         print("  disk too small", round(radius))
         return
-    src = photo.convert("L").load()
-    sw, sh = photo.size
-    dst = canvas.load()
-    # Longitude increases to solar east. Texture u = 0.5 - lon/360.
-    half = math.degrees(math.acos(max(-1.0, min(1.0, z_min)))) + 2
-    for my in range(H):
-        lat = math.radians(90.0 - (my / (H - 1)) * 180.0)
-        sinlat = math.sin(lat)
-        coslat = math.cos(lat)
-        iy = cy - radius * sinlat
-        if iy < 1 or iy > sh - 2:
-            continue
-        iy0 = int(iy)
-        fy = iy - iy0
-        for mx in range(W):
-            lon = (0.5 - mx / W) * 360.0
-            dlon = (lon - l0 + 540.0) % 360.0 - 180.0
-            if abs(dlon) > half:
-                continue
-            dlon_r = math.radians(dlon)
-            z = coslat * math.cos(dlon_r)
-            if z < z_min:
-                continue
-            ix = cx - radius * coslat * math.sin(dlon_r)
-            if ix < 1 or ix > sw - 2:
-                continue
-            ix0 = int(ix)
-            fx = ix - ix0
-            g = (
-                src[ix0, iy0] * (1 - fx) * (1 - fy)
-                + src[ix0 + 1, iy0] * fx * (1 - fy)
-                + src[ix0, iy0 + 1] * (1 - fx) * fy
-                + src[ix0 + 1, iy0 + 1] * fx * fy
-            )
-            if g < 28:
-                continue
-            color = TONE[int(g)]
-            if z_min <= 0 or z > z_min + 0.32:
-                dst[mx, my] = color
-            else:
-                fade = (z - z_min) / 0.32
-                old = dst[mx, my]
-                dst[mx, my] = tuple(int(old[c] * (1 - fade) + color[c] * fade) for c in range(3))
+    gray = np.asarray(photo.convert("L"), dtype=np.float32)
+    sh, sw = gray.shape
+    out = np.asarray(canvas, dtype=np.float32)
+    lat = np.radians(90.0 - (np.arange(H) / (H - 1)) * 180.0)
+    sinlat = np.sin(lat)
+    coslat = np.cos(lat)
+    lon = (0.5 - np.arange(W) / W) * 360.0
+    dlon = np.radians((lon - l0 + 540.0) % 360.0 - 180.0)
+    z = coslat[:, None] * np.cos(dlon)[None, :]
+    iy = cy - radius * sinlat[:, None]
+    ix = cx - radius * coslat[:, None] * np.sin(dlon)[None, :]
+    mask = (z >= z_min) & (iy >= 1) & (iy < sh - 2) & (ix >= 1) & (ix < sw - 2)
+    g = gray[np.clip(iy.astype(np.int32), 0, sh - 1), np.clip(ix.astype(np.int32), 0, sw - 1)]
+    mask &= g >= 28
+    # Remove this photo's limb darkening. The viewer puts it back from the camera.
+    ld = (1.0 - LD_U) + LD_U * np.maximum(z, 0.2)
+    corrected = np.clip(g / ld, 0, 255).astype(np.int32)
+    colors = np.asarray(TONE, dtype=np.float32)[corrected]
+    fade = np.ones_like(z) if z_min <= 0 else np.clip((z - z_min) / 0.32, 0, 1)
+    blended = out * (1 - fade[..., None]) + colors * fade[..., None]
+    out[mask] = blended[mask]
+    canvas.paste(Image.fromarray(out.astype(np.uint8), "RGB"))
 
 
 def colorize(im: Image.Image) -> Image.Image:
@@ -325,6 +309,24 @@ def write_missions(rows: list) -> None:
     print("regions", len(sites))
 
 
+def paint_flat() -> None:
+    """Whole surface from each day's sharp inner disk, with limb darkening removed."""
+    meta = json.loads(META.read_text())
+    anchor = datetime.fromisoformat(meta["anchor"].replace("Z", "+00:00"))
+    anchor_l0 = float(meta["l0"])
+    canvas = Image.new("RGB", (W, H), TONE[210])
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    for i in range(26, -1, -2):
+        when = (now - timedelta(days=i)).replace(hour=12)
+        print(f"flat -{i} {when.date()}", flush=True)
+        photo = screenshot(when, size=2048, scale=1)
+        if photo is None:
+            continue
+        paint_hemisphere(canvas, photo, l0_at(when, anchor, anchor_l0), 0.42)
+    canvas.save(OUT, "JPEG", quality=90, optimize=True)
+    print("wrote", OUT, OUT.stat().st_size, "bytes")
+
+
 def paint_faces() -> None:
     """Lay real full-disk photos on the sphere. Today covers the whole near side."""
     meta = json.loads(META.read_text())
@@ -349,7 +351,9 @@ def paint_faces() -> None:
 
 
 if __name__ == "__main__":
-    if "--face" in sys.argv:
+    if "--flat" in sys.argv:
+        paint_flat()
+    elif "--face" in sys.argv:
         paint_faces()
     else:
         main()
