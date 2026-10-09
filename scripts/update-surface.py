@@ -21,7 +21,7 @@ OUT = ROOT / "sun-2k.jpg"
 META = ROOT / "surface.json"
 MISSIONS = ROOT / "missions.js"
 
-W, H = 4096, 2048
+W, H = 8192, 4096
 # Continuum limb darkening, fit to the HMI browse images. Divided out of the
 # map and put back in the viewer, so the dark rim stays on the silhouette.
 LD_U = 0.62
@@ -76,12 +76,17 @@ def screenshot(when: datetime, size: int = 1024, scale: int = 2) -> Image.Image 
         f"&scale=false&date={date}&x0=0&y0=0&width={size}&height={size}"
         "&display=true&watermark=false"
     )
+    path = Path("/tmp") / f"sunstrip-{size}-{date}.png"
+    if path.exists() and path.stat().st_size > 10000:
+        try:
+            return Image.open(path).convert("RGB")
+        except Exception:
+            pass
     try:
-        raw = fetch(url, timeout=50)
+        raw = fetch(url, timeout=90)
     except Exception as exc:
         print("  miss", date, exc)
         return None
-    path = Path("/tmp") / f"sunstrip-{size}-{date}.png"
     path.write_bytes(raw)
     try:
         return Image.open(path).convert("RGB")
@@ -309,21 +314,92 @@ def write_missions(rows: list) -> None:
     print("regions", len(sites))
 
 
+def fill_poles(canvas: Image.Image) -> None:
+    """The last few degrees at each pole never face us squarely. Copy the nearest real row."""
+    import numpy as np
+
+    arr = np.asarray(canvas).copy()
+    row_std = arr.std(axis=(1, 2))
+    filled = row_std > 1.5
+    if not filled.any():
+        return
+    idx = np.arange(arr.shape[0])
+    good = idx[filled]
+    for y in idx[~filled]:
+        src = good[np.argmin(np.abs(good - y))]
+        arr[y] = arr[src]
+    canvas.paste(Image.fromarray(arr, "RGB"))
+
+
+def contribute(best, best_mu, photo: Image.Image, l0: float) -> None:
+    """Keep the sample that was closest to disk center. That is the sharp one."""
+    import numpy as np
+
+    found = disk(photo)
+    if not found:
+        print("  no disk")
+        return
+    cx, cy, radius = found
+    if radius < 100:
+        return
+    gray = np.asarray(photo.convert("L"), dtype=np.float32)
+    sh, sw = gray.shape
+    lat = np.radians(90.0 - (np.arange(H) / (H - 1)) * 180.0)
+    lon = (0.5 - np.arange(W) / W) * 360.0
+    dlon = np.radians((lon - l0 + 540.0) % 360.0 - 180.0)
+    z = np.cos(lat)[:, None] * np.cos(dlon)[None, :]
+    iy = cy - radius * np.sin(lat)[:, None]
+    ix = cx - radius * np.cos(lat)[:, None] * np.sin(dlon)[None, :]
+    mask = (z > best_mu) & (z >= 0.05) & (iy >= 1) & (iy < sh - 2) & (ix >= 1) & (ix < sw - 2)
+    g = gray[np.clip(iy.astype(np.int32), 0, sh - 1), np.clip(ix.astype(np.int32), 0, sw - 1)]
+    mask &= g >= 28
+    ld = (1.0 - LD_U) + LD_U * np.maximum(z, 0.12)
+    corrected = np.clip(g / ld, 0, 255).astype(np.int32)
+    colors = np.asarray(TONE, dtype=np.uint8)[corrected]
+    best[mask] = colors[mask]
+    best_mu[mask] = z[mask]
+
+
 def paint_flat() -> None:
-    """Whole surface from each day's sharp inner disk, with limb darkening removed."""
+    """Each point on the Sun is taken from the day it was seen most face-on.
+
+    The side facing Earth on open is today's full-resolution frame.
+    """
+    import numpy as np
+
     meta = json.loads(META.read_text())
     anchor = datetime.fromisoformat(meta["anchor"].replace("Z", "+00:00"))
     anchor_l0 = float(meta["l0"])
-    canvas = Image.new("RGB", (W, H), TONE[210])
+    best = np.empty((H, W, 3), dtype=np.uint8)
+    best[:] = TONE[210]
+    best_mu = np.zeros((H, W), dtype=np.float32)
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-    for i in range(26, -1, -2):
+    for i in range(27, -1, -1):
         when = (now - timedelta(days=i)).replace(hour=12)
         print(f"flat -{i} {when.date()}", flush=True)
-        photo = screenshot(when, size=2048, scale=1)
+        photo = screenshot(when, size=4096, scale=0.5)
         if photo is None:
             continue
-        paint_hemisphere(canvas, photo, l0_at(when, anchor, anchor_l0), 0.42)
-    canvas.save(OUT, "JPEG", quality=90, optimize=True)
+        contribute(best, best_mu, photo, l0_at(when, anchor, anchor_l0))
+        del photo
+    covered = float((best_mu > 0).mean())
+    print(f"covered {covered:.1%}", flush=True)
+    # The extreme poles are never seen face-on, and a flat fill there reads as a
+    # bald cap. Match them to the real photosphere just below.
+    ref_rows = []
+    for lat in (58, -58):
+        ref_rows.append(best[int(round((90 - lat) / 180 * (H - 1)))])
+    ref = np.mean(ref_rows, axis=0).mean(axis=0)
+    rng = np.random.default_rng(4)
+    for y in range(H):
+        alat = abs(90.0 - (y / (H - 1)) * 180.0)
+        if alat < 66:
+            continue
+        t = min(1.0, (alat - 66) / 24.0)
+        t = t * t * (3 - 2 * t)
+        cap = np.clip(ref + rng.normal(0, 3.2, size=(W, 3)), 0, 255)
+        best[y] = ((1 - t) * best[y] + t * cap).astype(np.uint8)
+    Image.fromarray(best, "RGB").save(OUT, "JPEG", quality=93, optimize=True, subsampling=0)
     print("wrote", OUT, OUT.stat().st_size, "bytes")
 
 
