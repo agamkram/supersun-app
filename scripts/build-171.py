@@ -149,9 +149,50 @@ def add_day(best, best_mu, flat, z, valid, gain: float) -> None:
     best_mu[better] = z[better]
 
 
+def cap_poles(best: np.ndarray) -> None:
+    """The poles are never photographed straight on. Continue them in the same gold.
+
+    Sampled in the pole's own plane so the cap is not a black hole, a spoke, or rings.
+    """
+    h, w = best.shape[:2]
+    rng = np.random.default_rng(5)
+    noise = rng.normal(0, 1, (256, 256)).astype(np.float32)
+    pic = Image.fromarray(np.clip(noise * 28 + 128, 0, 255).astype(np.uint8))
+    pic = pic.resize((128, 128), Image.BILINEAR).resize((480, 480), Image.BILINEAR)
+    grain = np.asarray(pic).astype(np.float32)
+    grain = (grain - grain.mean()) / (grain.std() + 1e-3)
+    gh, gw = grain.shape
+    xs = np.arange(w)
+    lon = (0.5 - xs / w) * 2 * math.pi
+    cosl = np.cos(lon)
+    sinl = np.sin(lon)
+
+    def row_at(lat: float) -> int:
+        return int(round((90.0 - lat) / 180.0 * (h - 1)))
+
+    for sign in (1, -1):
+        color = best[row_at(72.0 * sign)].mean(axis=0).astype(np.float32)
+        y0, y1 = (0, row_at(74)) if sign > 0 else (row_at(-74), h)
+        for y in range(y0, y1):
+            lat = 90.0 - (y / (h - 1)) * 180.0
+            alat = abs(lat)
+            if alat < 78:
+                continue
+            t = min(1.0, (alat - 78.0) / 5.0)
+            t = t * t * (3 - 2 * t)
+            r = math.cos(math.radians(lat)) / math.cos(math.radians(78))
+            u = 0.5 + 0.46 * r * cosl
+            v = 0.5 + 0.46 * r * sinl
+            iu = np.clip((u * (gw - 1)).astype(np.int32), 0, gw - 1)
+            iv = np.clip((v * (gh - 1)).astype(np.int32), 0, gh - 1)
+            shade = (1.0 + 0.16 * grain[iv, iu])[:, None]
+            cap = np.clip(color * shade, 0, 255)
+            best[y] = ((1 - t) * best[y] + t * cap).astype(np.uint8)
+
+
 def fetch_sdo() -> list[tuple[datetime, Path]]:
     """One AIA 171 disk per day for a full Carrington turn. Cached on disk."""
-    cache = Path("/tmp/sdo171/aia")
+    cache = ROOT / ".sun-cache"
     cache.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
     frames = []
@@ -168,8 +209,17 @@ def fetch_sdo() -> list[tuple[datetime, Path]]:
             )
             print("  download", date, flush=True)
             req = urllib.request.Request(url, headers={"User-Agent": "supersun-app"})
-            with urllib.request.urlopen(req, timeout=90) as res:
-                dest.write_bytes(res.read())
+            part = dest.with_suffix(".part")
+            try:
+                with urllib.request.urlopen(req, timeout=90) as res:
+                    part.write_bytes(res.read())
+            except Exception as exc:
+                part.unlink(missing_ok=True)
+                raise SystemExit(f"download failed for {date}: {exc}") from exc
+            if part.stat().st_size < 100000:
+                part.unlink(missing_ok=True)
+                raise SystemExit(f"download too small for {date}")
+            part.replace(dest)
         frames.append((when, dest))
     return frames
 
@@ -191,15 +241,21 @@ def main() -> None:
         del flat, z, valid
     covered = best_mu > 0
     print(f"covered {covered.mean():.1%}", flush=True)
-    # Any leftover pole pixels take the nearest real row. No flat disc, no blur.
-    row_has = best.reshape(H, -1).std(axis=1) > 1
-    good = np.where(row_has)[0]
-    if len(good):
-        for y in np.where(~row_has)[0]:
-            best[y] = best[int(good[np.argmin(np.abs(good - y))])]
-    try_path = Path("/tmp/sun-try.jpg")
-    Image.fromarray(best).save(try_path, "JPEG", quality=93, subsampling=0)
-    print("wrote", try_path, try_path.stat().st_size)
+    if covered.mean() < 0.9:
+        raise SystemExit(f"coverage {covered.mean():.1%} is too low, keeping the current sun")
+    cap_poles(best)
+    south = best[int(H * 0.98) :]
+    north = best[: int(H * 0.02)]
+    if float(south.mean()) < 20 or float(north.mean()) < 20:
+        raise SystemExit("a pole is still empty, keeping the current sun")
+    part = OUT.with_suffix(".jpg.part")
+    Image.fromarray(best).save(part, "JPEG", quality=93, subsampling=0)
+    if part.stat().st_size < 1_000_000:
+        part.unlink(missing_ok=True)
+        raise SystemExit("surface file is too small, keeping the current sun")
+    part.replace(OUT)
+    print("wrote", OUT, OUT.stat().st_size, flush=True)
+    subprocess.check_call([sys.executable, str(ROOT / "scripts" / "bump-version.py")])
 
 
 if __name__ == "__main__":

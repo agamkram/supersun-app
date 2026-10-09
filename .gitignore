@@ -9,3 +9,4 @@ orient-compare-mirror.png
 .local-key.pem
 
 __pycache__/
+.sun-cache/

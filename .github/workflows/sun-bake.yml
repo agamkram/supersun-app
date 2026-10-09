@@ -1,0 +1,42 @@
+name: Bake Sun
+
+on:
+  schedule:
+    # After the 12:00 UTC SDO frame is up.
+    - cron: "30 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: .sun-cache
+          key: sun-frames-${{ github.run_id }}
+          restore-keys: sun-frames-
+
+      - run: pip install pillow numpy
+
+      - run: python3 scripts/build-171.py --sdo
+
+      - name: Commit the new surface
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sun-2k.jpg index.html sun.js
+          if git diff --cached --quiet; then
+            echo "surface unchanged"
+            exit 0
+          fi
+          git commit -m "Bake today's Sun surface."
+          git push
