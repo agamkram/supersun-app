@@ -120,8 +120,8 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=6", segments: 224 },
-  high: { map: "sun-2k.jpg?v=6", segments: 224 },
+  low: { map: "sun-2k.jpg?v=7", segments: 224 },
+  high: { map: "sun-2k.jpg?v=7", segments: 224 },
 };
 /** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;

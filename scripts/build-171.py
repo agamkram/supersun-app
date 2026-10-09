@@ -80,31 +80,31 @@ def project(photo: Image.Image, l0: float):
     z = np.cos(lat)[:, None] * np.cos(dlon)[None, :]
     iy = cy - radius * np.sin(lat)[:, None]
     ix = cx - radius * np.cos(lat)[:, None] * np.sin(dlon)[None, :]
-    valid = (z >= 0.12) & (iy >= 1) & (iy < sh - 2) & (ix >= 1) & (ix < sw - 2)
+    valid = (z >= 0.05) & (iy >= 1) & (iy < sh - 2) & (ix >= 1) & (ix < sw - 2)
     sample = rgb[np.clip(iy.astype(np.int32), 0, sh - 1), np.clip(ix.astype(np.int32), 0, sw - 1)]
     valid &= sample.sum(axis=2) > 40
-    # Remove this frame's limb brightening. The viewer draws the rim.
-    flat = np.clip(sample / (0.62 + 0.38 * np.clip(z, 0.12, 1)[..., None]), 0, 255)
-    return flat, z, valid
+    return sample, z, valid
 
 
 def quiet_level(photo: Image.Image) -> float:
-    """Brightness of the dim corona, ignoring active regions."""
+    """Center of the disk. Whole-frame medians hide a 3x exposure difference."""
     gray = np.asarray(photo.convert("L"))
     h, w = gray.shape
-    center = gray[h // 5 : 4 * h // 5, w // 5 : 4 * w // 5].astype(np.float32)
-    cut = float(np.percentile(center, 40))
-    dim = center[center <= cut]
-    return float(np.median(dim)) if dim.size else 40.0
+    center = gray[h // 2 - 120 : h // 2 + 120, w // 2 - 120 : w // 2 + 120]
+    return float(np.median(center)) if center.size else 40.0
 
 
-def add_day(acc, wacc, flat, z, valid, gain: float) -> None:
-    """Blend by how face-on the point was. gain matches this day's quiet corona."""
+def add_day(best, best_mu, flat, z, valid, gain: float) -> None:
+    """Keep the sharpest day. gain makes that day's disk as bright as the others."""
     flat = np.clip(flat * gain, 0, 255)
-    # High power keeps the day a point was most face-on. The shoulders still blend.
-    weight = np.where(valid, np.clip(z, 0, 1) ** 8, 0).astype(np.float32)
-    acc += flat * weight[..., None]
-    wacc += weight
+    better = valid & (z >= best_mu)
+    # A short blend where two days are equally face-on, so the join is not a cut.
+    close = valid & ~better & (best_mu > 0) & (z > best_mu - 0.08)
+    best[better] = flat[better].astype(np.uint8)
+    if close.any():
+        fade = ((z[close] - (best_mu[close] - 0.08)) / 0.08)[:, None]
+        best[close] = ((1 - fade) * best[close] + fade * flat[close]).astype(np.uint8)
+    best_mu[better] = z[better]
 
 
 def fetch_sdo() -> list[tuple[datetime, Path]]:
@@ -139,36 +139,25 @@ def main() -> None:
         levels.append(quiet_level(Image.open(path)))
     target = float(np.median(levels))
     print(f"quiet target {target:.1f}", flush=True)
-    acc = np.zeros((H, W, 3), dtype=np.float32)
-    wacc = np.zeros((H, W), dtype=np.float32)
+    best = np.zeros((H, W, 3), dtype=np.uint8)
+    best_mu = np.zeros((H, W), dtype=np.float32)
     for (when, path), level in zip(frames, levels):
         gain = target / level if level > 5 else 1.0
         print(when.date(), "L0", round(l0_at(when), 1), "gain", round(gain, 2), flush=True)
         flat, z, valid = project(Image.open(path), l0_at(when))
-        add_day(acc, wacc, flat, z, valid, gain)
+        add_day(best, best_mu, flat, z, valid, gain)
         del flat, z, valid
-    covered = wacc > 0
+    covered = best_mu > 0
     print(f"covered {covered.mean():.1%}", flush=True)
-    best = np.zeros((H, W, 3), dtype=np.uint8)
-    best[covered] = np.clip(acc[covered] / wacc[covered, None], 0, 255).astype(np.uint8)
-    row_w = wacc.mean(axis=1)
-    good = np.where(row_w > 0.01)[0]
-    # High latitudes are badly foreshortened and break into spokes. Blur along
-    # longitude toward the pole so the cap stays the same surface, not an empty disc.
-    for y in range(H):
-        lat = abs(90.0 - (y / (H - 1)) * 180.0)
-        if lat < 60:
-            continue
-        t = min(1.0, (lat - 60.0) / 30.0)
-        k = max(8, int(16 + (t ** 3) * (W / 2)))
-        row = best[y].astype(np.float32)
-        if row_w[y] <= 0.01 and len(good):
-            row = best[int(good[np.argmin(np.abs(good - y))])].astype(np.float32)
-        pad = np.concatenate([row[-k:], row, row[:k]], axis=0)
-        csum = np.cumsum(pad, axis=0)
-        best[y] = ((csum[2 * k :] - csum[: -2 * k]) / (2 * k)).astype(np.uint8)
-    Image.fromarray(best).save(OUT, "JPEG", quality=92, subsampling=0)
-    print("wrote", OUT, OUT.stat().st_size)
+    # Any leftover pole pixels take the nearest real row. No flat disc, no blur.
+    row_has = best.reshape(H, -1).std(axis=1) > 1
+    good = np.where(row_has)[0]
+    if len(good):
+        for y in np.where(~row_has)[0]:
+            best[y] = best[int(good[np.argmin(np.abs(good - y))])]
+    try_path = Path("/tmp/sun-try.jpg")
+    Image.fromarray(best).save(try_path, "JPEG", quality=93, subsampling=0)
+    print("wrote", try_path, try_path.stat().st_size)
 
 
 if __name__ == "__main__":
