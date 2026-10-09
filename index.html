@@ -550,33 +550,33 @@
       }
 
       .slider-track {
-        height: 56px;
-        margin: -6px 0;
-        padding: 6px 0;
+        height: 36px;
+        margin: -3px 0;
+        padding: 3px 0;
         box-sizing: content-box;
       }
 
       #phase-slider {
-        height: 56px;
+        height: 36px;
       }
 
       #phase-slider::-webkit-slider-runnable-track {
-        height: 10px;
+        height: 7px;
       }
 
       #phase-slider::-webkit-slider-thumb {
-        width: 44px;
-        height: 44px;
-        margin-top: -17px;
+        width: 26px;
+        height: 26px;
+        margin-top: -9.5px;
       }
 
       #phase-slider::-moz-range-track {
-        height: 10px;
+        height: 7px;
       }
 
       #phase-slider::-moz-range-thumb {
-        width: 44px;
-        height: 44px;
+        width: 26px;
+        height: 26px;
       }
     }
 
@@ -1171,11 +1171,11 @@
       position: relative;
       flex: 1 1 auto;
       min-width: 0;
-      height: 44px;
+      height: 28px;
       display: flex;
       align-items: center;
-      margin: -4px 0;
-      padding: 4px 0;
+      margin: -2px 0;
+      padding: 2px 0;
       box-sizing: content-box;
     }
 
@@ -1183,7 +1183,7 @@
       -webkit-appearance: none;
       appearance: none;
       width: 100%;
-      height: 44px;
+      height: 28px;
       margin: 0;
       background: transparent;
       cursor: pointer;
@@ -1192,17 +1192,17 @@
     }
 
     #phase-slider::-webkit-slider-runnable-track {
-      height: 8px;
-      border-radius: 4px;
+      height: 6px;
+      border-radius: 3px;
       background: rgba(200, 212, 232, 0.28);
     }
 
     #phase-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 28px;
-      height: 28px;
-      margin-top: -10px;
+      width: 20px;
+      height: 20px;
+      margin-top: -7px;
       border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.35);
       background: #e8edf7;
@@ -1210,15 +1210,15 @@
     }
 
     #phase-slider::-moz-range-track {
-      height: 8px;
-      border-radius: 4px;
+      height: 6px;
+      border-radius: 3px;
       background: rgba(200, 212, 232, 0.28);
       border: none;
     }
 
     #phase-slider::-moz-range-thumb {
-      width: 28px;
-      height: 28px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.35);
       background: #e8edf7;
@@ -1419,7 +1419,7 @@
     <h1 class="app-title">SuperSun</h1>
   </header>
 
-  <p class="status" id="status" data-state="loading" data-build="s11">Loading surface…</p>
+  <p class="status" id="status" data-state="loading" data-build="s12">Loading surface…</p>
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
@@ -1612,7 +1612,7 @@
   <script src="astronomy.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=11";
+    import { createSunGlobe } from "./sun.js?v=12";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const TIDE_STATIONS_KEY = "supermoon-noaa-tide-stations-v6";
