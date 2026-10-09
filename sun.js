@@ -120,8 +120,8 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=7", segments: 224 },
-  high: { map: "sun-2k.jpg?v=7", segments: 224 },
+  low: { map: "sun-2k.jpg?v=8", segments: 224 },
+  high: { map: "sun-2k.jpg?v=8", segments: 224 },
 };
 /** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -779,7 +779,8 @@ export function createSunGlobe(canvas, options = {}) {
     const skyRoll = orientLocked
       ? frozenRoll
       : skyRollRad(observerLat, observerLon, when);
-    moonGroup.rotation.set(0, 0, skyRoll);
+    // Solar north stays up. Sky roll would lean the poles for the local horizon.
+    moonGroup.rotation.set(0, 0, 0);
     moonGroup.position.copy(target);
 
     lastPhaseInfo = {

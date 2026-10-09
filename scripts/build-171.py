@@ -7,6 +7,7 @@ map; the viewer draws that rim from the camera.
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 import urllib.request
@@ -29,6 +30,34 @@ DEG_PER_DAY = 360.0 / ROTATION_DAYS
 T0 = datetime(2026, 9, 22, 10, 47, tzinfo=timezone.utc)
 T1 = datetime(2026, 10, 5, 10, 57, tzinfo=timezone.utc)
 DURATION = 10.5
+
+
+def solar_pb(when: datetime) -> tuple[float, float]:
+    """Position angle P and disk-center latitude B0, in degrees.
+
+    P is 0 near 5 Jan and 7 Jul, and about +26° in early October.
+    B0 is about -7° in early June and +7° in early December.
+    """
+    a = (14 - when.month) // 12
+    y = when.year + 4800 - a
+    m = when.month + 12 * a - 3
+    jdn = when.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
+    j = jdn - 0.5 + (when.hour + when.minute / 60.0) / 24.0
+    T = (j - 2451545.0) / 36525.0
+    L = math.radians(280.46645 + 36000.76983 * T)
+    M = math.radians(357.52910 + 35999.05030 * T)
+    C = math.radians(
+        (1.914600 - 0.004817 * T) * math.sin(M)
+        + (0.019993 - 0.000101 * T) * math.sin(2 * M)
+    )
+    theta = L + C
+    eps = math.radians(23.4392911 - 0.0130042 * T)
+    K = math.radians(73.6667 + 1.3958333 * (j - 2415020.0) / 36525.0)
+    I = math.radians(7.25)
+    p_ang = math.degrees(math.atan(-math.cos(theta) * math.tan(eps)))
+    p_ang += math.degrees(math.atan(-math.cos(theta - K) * math.tan(I)))
+    b0 = math.degrees(math.asin(-math.cos(theta - K) * math.sin(I)))
+    return p_ang, b0
 
 
 def l0_at(when: datetime) -> float:
@@ -67,19 +96,32 @@ def disk_radius(gray: np.ndarray) -> tuple[float, float, float]:
     return cx, cy, float(edge) * 0.98
 
 
-def project(photo: Image.Image, l0: float):
-    """Map one 171 disk. z is how face-on each surface point was that day."""
+def project(photo: Image.Image, l0: float, when: datetime):
+    """Map one 171 disk onto heliographic lat/lon. z is how face-on it was."""
     rgb = np.asarray(photo.convert("RGB")).astype(np.float32)
     gray = rgb.mean(axis=2)
     cx, cy, radius = disk_radius(gray)
-    print(f"  radius {radius:.0f}", flush=True)
+    p_ang, b0 = solar_pb(when)
+    print(f"  radius {radius:.0f}  P {p_ang:+.1f}  B0 {b0:+.1f}", flush=True)
     sh, sw = gray.shape
     lat = np.radians(90.0 - (np.arange(H) / (H - 1)) * 180.0)
     lon = (0.5 - np.arange(W) / W) * 360.0
     dlon = np.radians((lon - l0 + 540.0) % 360.0 - 180.0)
-    z = np.cos(lat)[:, None] * np.cos(dlon)[None, :]
-    iy = cy - radius * np.sin(lat)[:, None]
-    ix = cx - radius * np.cos(lat)[:, None] * np.sin(dlon)[None, :]
+    sinlat = np.sin(lat)[:, None]
+    coslat = np.cos(lat)[:, None]
+    sind = np.sin(dlon)[None, :]
+    cosd = np.cos(dlon)[None, :]
+    br = math.radians(b0)
+    pr = math.radians(p_ang)
+    # Heliographic direction of this surface point, as seen that day.
+    x_east = coslat * sind
+    y_north = sinlat * math.cos(br) - coslat * cosd * math.sin(br)
+    z = sinlat * math.sin(br) + coslat * cosd * math.cos(br)
+    # Frames are celestial-north up. P leans solar north toward the east.
+    x_img = x_east * math.cos(pr) - y_north * math.sin(pr)
+    y_img = x_east * math.sin(pr) + y_north * math.cos(pr)
+    ix = cx - radius * x_img
+    iy = cy - radius * y_img
     valid = (z >= 0.05) & (iy >= 1) & (iy < sh - 2) & (ix >= 1) & (ix < sw - 2)
     sample = rgb[np.clip(iy.astype(np.int32), 0, sh - 1), np.clip(ix.astype(np.int32), 0, sw - 1)]
     valid &= sample.sum(axis=2) > 40
@@ -144,7 +186,7 @@ def main() -> None:
     for (when, path), level in zip(frames, levels):
         gain = target / level if level > 5 else 1.0
         print(when.date(), "L0", round(l0_at(when), 1), "gain", round(gain, 2), flush=True)
-        flat, z, valid = project(Image.open(path), l0_at(when))
+        flat, z, valid = project(Image.open(path), l0_at(when), when)
         add_day(best, best_mu, flat, z, valid, gain)
         del flat, z, valid
     covered = best_mu > 0
