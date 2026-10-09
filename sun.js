@@ -120,8 +120,8 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=4", segments: 224 },
-  high: { map: "sun-2k.jpg?v=4", segments: 224 },
+  low: { map: "sun-2k.jpg?v=5", segments: 224 },
+  high: { map: "sun-2k.jpg?v=5", segments: 224 },
 };
 /** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -547,8 +547,11 @@ export function createSunGlobe(canvas, options = {}) {
         void main() {
           vec3 col = texture2D(uMap, vUv).rgb;
           float mu = clamp(dot(normalize(vNormalW), normalize(vViewW)), 0.0, 1.0);
-          float limb = (1.0 - uLimb) + uLimb * mu;
-          gl_FragColor = vec4(col * limb, 1.0);
+          // 171 brightens toward the rim. The glow stays on the silhouette.
+          float rim = pow(1.0 - mu, 1.7);
+          col += col * rim * 1.15;
+          col += vec3(1.0, 0.78, 0.28) * rim * 0.22;
+          gl_FragColor = vec4(col, 1.0);
         }
       `,
     });
