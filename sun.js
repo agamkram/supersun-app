@@ -1,8 +1,7 @@
 /**
  * Hi-res 3D Sun
  * 1-finger orbit · 2fs (two-finger slide) pan · pinch zoom · Live/home reset
- * Same camera rig as the Moon. The texture is a Carrington map, so the
- * longitude facing Earth is the one in surface.json.
+ * The texture is a Carrington map; the longitude facing Earth is in surface.json.
  */
 import * as THREE from "three";
 import { MISSION_SITES } from "./missions.js";
@@ -24,9 +23,8 @@ const BASE_FOV = 40;
  */
 const PAN_MARGIN = 0.35;
 
-const NEAR_SIDE_Y = -Math.PI / 2;
 
-/** Starfield (ported from satellite-app) — fixed sphere behind the moon */
+/** Starfield — fixed sphere behind the Sun */
 const STAR_COUNT = 5000;
 const STAR_RADIUS = 55;
 
@@ -119,10 +117,8 @@ function createStarfield() {
   return points;
 }
 
-const LOD = {
-  low: { map: "sun-2k.jpg?v=12", segments: 224 },
-  high: { map: "sun-2k.jpg?v=12", segments: 224 },
-};
+const SURFACE = { map: "sun-2k.jpg?v=12", segments: 224 };
+
 /** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
 
@@ -167,7 +163,7 @@ void main() {
 /** Filled from surface.json. L0 is the Carrington longitude facing Earth at `t`. */
 let surfaceAnchor = {
   t: Date.parse("2026-10-08T12:00:00Z"),
-  l0: 263,
+  l0: 255,
   rotationDays: 27.2753,
 };
 
@@ -181,200 +177,6 @@ function carringtonPhase(date) {
   return ((360 - l0Degrees(date)) % 360) / 360;
 }
 
-const _toSun = new THREE.Vector3();
-const _toEarth = new THREE.Vector3();
-const _xAxis = new THREE.Vector3();
-const _yAxis = new THREE.Vector3();
-const _zAxis = new THREE.Vector3();
-const _worldUp = new THREE.Vector3(0, 0, 1);
-const _camDir = new THREE.Vector3();
-const _eclAxis = new THREE.Vector3();
-const _eclOffset = new THREE.Vector3();
-const _viewZ = new THREE.Vector3(0, 0, 1);
-const _keyColor = new THREE.Color(0xfff2e6);
-const _keyEclipse = new THREE.Color(0xff6a3a);
-
-const EARTH_R_KM = 6371;
-const SUN_R_KM = 695700;
-const MOON_R_KM = 1737.4;
-
-/** Fraction of moon disk covered by a circular shadow (0…1). */
-function diskOverlapFraction(rMoon, rShadow, d) {
-  if (!(rMoon > 0) || !(rShadow > 0)) return 0;
-  if (d >= rMoon + rShadow) return 0;
-  if (d <= Math.abs(rShadow - rMoon)) {
-    return rShadow >= rMoon ? 1 : (rShadow * rShadow) / (rMoon * rMoon);
-  }
-  const r = rMoon;
-  const R = rShadow;
-  const a = (r * r - R * R + d * d) / (2 * d);
-  const h = Math.sqrt(Math.max(0, r * r - a * a));
-  return (
-    (r * r * Math.acos(Math.min(1, Math.max(-1, a / r))) -
-      a * h +
-      R * R * Math.acos(Math.min(1, Math.max(-1, (d - a) / R))) -
-      (d - a) * h) /
-    (Math.PI * r * r)
-  );
-}
-
-/** @type {null | { peakMs: number, kind: string, obscuration: number, sd_penum: number, sd_partial: number, sd_total: number }} */
-let _eclipseCatalog = null;
-
-function catalogLunarEclipse(A, when) {
-  const t = when.getTime();
-  const cat = _eclipseCatalog;
-  if (
-    cat &&
-    Math.abs(t - cat.peakMs) < (cat.sd_penum + 180) * 60e3
-  ) {
-    return cat;
-  }
-  try {
-    // Search from a day earlier so “now” during an eclipse still finds this event
-    let info = A.SearchLunarEclipse(new Date(t - 864e5));
-    if (!info || !info.peak) return null;
-    let peakMs = info.peak.date.getTime();
-    // If this peak is far in the past relative to penumbra, step forward
-    if (t - peakMs > (info.sd_penum + 60) * 60e3) {
-      info = A.NextLunarEclipse(info.peak.date);
-      if (!info || !info.peak) return null;
-      peakMs = info.peak.date.getTime();
-    }
-    _eclipseCatalog = {
-      peakMs,
-      kind: info.kind,
-      obscuration: Number(info.obscuration) || 0,
-      sd_penum: Number(info.sd_penum) || 0,
-      sd_partial: Number(info.sd_partial) || 0,
-      sd_total: Number(info.sd_total) || 0,
-    };
-    return _eclipseCatalog;
-  } catch (_) {
-    return null;
-  }
-}
-
-/**
- * Earth umbra/penumbra on the Moon at `when`.
- * Face axes must match lighting (_xAxis/_yAxis/_zAxis) before skyRoll.
- */
-function computeLunarEclipse(A, when, xAxis, yAxis, zAxis) {
-  const empty = {
-    active: false,
-    stage: "none",
-    umbralObscuration: 0,
-    penumbral: 0,
-    ox: 0,
-    oy: 0,
-    uR: 0,
-    pR: 0,
-    kind: null,
-    peak: null,
-    catalogObscuration: 0,
-  };
-  if (!A) return empty;
-
-  const time = A.MakeTime(when);
-  const sun = A.GeoVector(A.Body.Sun, time, false);
-  const moon = A.GeoVector(A.Body.Moon, time, false);
-  const sLen = Math.hypot(sun.x, sun.y, sun.z);
-  const mLen = Math.hypot(moon.x, moon.y, moon.z);
-  if (!(sLen > 0) || !(mLen > 0)) return empty;
-
-  // Umbra axis from Earth toward anti-sun
-  _eclAxis.set(-sun.x / sLen, -sun.y / sLen, -sun.z / sLen);
-  const mhx = moon.x / mLen;
-  const mhy = moon.y / mLen;
-  const mhz = moon.z / mLen;
-  const denom = _eclAxis.x * mhx + _eclAxis.y * mhy + _eclAxis.z * mhz;
-  if (Math.abs(denom) < 1e-9) return empty;
-
-  // Intersection of shadow axis with plane through Moon ⊥ Earth–Moon
-  const tt = mLen / denom;
-  _eclOffset.set(
-    _eclAxis.x * tt - moon.x,
-    _eclAxis.y * tt - moon.y,
-    _eclAxis.z * tt - moon.z
-  );
-  const offsetKm = _eclOffset.length() * A.KM_PER_AU;
-  const D = mLen * A.KM_PER_AU;
-  const Ds = sLen * A.KM_PER_AU;
-  const fU = (SUN_R_KM - EARTH_R_KM) / Ds;
-  const fP = (SUN_R_KM + EARTH_R_KM) / Ds;
-  const uR = EARTH_R_KM - D * fU;
-  const pR = EARTH_R_KM + D * fP;
-  if (!(pR > 0)) return empty;
-
-  const ox =
-    ((_eclOffset.x * xAxis.x + _eclOffset.y * xAxis.y + _eclOffset.z * xAxis.z) *
-      A.KM_PER_AU) /
-    MOON_R_KM;
-  const oy =
-    ((_eclOffset.x * yAxis.x + _eclOffset.y * yAxis.y + _eclOffset.z * yAxis.z) *
-      A.KM_PER_AU) /
-    MOON_R_KM;
-
-  const umbralObscuration =
-    uR > 0 ? diskOverlapFraction(MOON_R_KM, uR, offsetKm) : 0;
-  const penCover = diskOverlapFraction(MOON_R_KM, pR, offsetKm);
-  // Soft penumbral amount when not yet in umbra
-  const penumbral =
-    penCover > 0
-      ? Math.min(1, Math.max(0, penCover - umbralObscuration))
-      : 0;
-
-  let stage = "none";
-  if (umbralObscuration >= 0.995) stage = "total";
-  else if (umbralObscuration > 0.012) stage = "partial";
-  else if (penCover > 0.04) stage = "penumbral";
-
-  const cat = catalogLunarEclipse(A, when);
-  let kind = cat && Math.abs(when.getTime() - cat.peakMs) < (cat.sd_penum + 20) * 60e3
-    ? cat.kind
-    : null;
-  // Prefer geometry stage; fall back to catalog kind near peak for penumbral-only events
-  if (stage === "none" && kind === "penumbral" && cat) {
-    const dtMin = Math.abs(when.getTime() - cat.peakMs) / 60000;
-    if (dtMin <= cat.sd_penum) stage = "penumbral";
-  }
-  if (stage === "partial" && kind === "total" && umbralObscuration > 0.98) {
-    stage = "total";
-  }
-
-  return {
-    active: stage !== "none",
-    stage,
-    umbralObscuration,
-    penumbral,
-    ox,
-    oy,
-    uR: uR > 0 ? uR / MOON_R_KM : 0,
-    pR: pR / MOON_R_KM,
-    kind: kind || stage,
-    peak: cat ? new Date(cat.peakMs) : null,
-    catalogObscuration: cat ? cat.obscuration : 0,
-  };
-}
-
-function phaseName(phase01) {
-  if (phase01 < 0.03 || phase01 > 0.97) return "New Moon";
-  if (phase01 < 0.22) return "Waxing Crescent";
-  if (phase01 < 0.28) return "First Quarter";
-  if (phase01 < 0.47) return "Waxing Gibbous";
-  if (phase01 < 0.53) return "Full Moon";
-  if (phase01 < 0.72) return "Waning Gibbous";
-  if (phase01 < 0.78) return "Last Quarter";
-  return "Waning Crescent";
-}
-
-function eclipsePhaseName(stage, phase01) {
-  // Short labels — metric cells are narrow (ellipsis otherwise)
-  if (stage === "total") return "Total eclipse";
-  if (stage === "partial") return "Partial eclipse";
-  if (stage === "penumbral") return "Penumbral eclipse";
-  return phaseName(phase01);
-}
 
 function skyRollRad(latDeg, lonDeg, date) {
   const A = globalThis.Astronomy;
@@ -440,8 +242,8 @@ export function createSunGlobe(canvas, options = {}) {
   const starfield = createStarfield();
   scene.add(starfield);
 
-  const moonGroup = new THREE.Group();
-  scene.add(moonGroup);
+  const sunGroup = new THREE.Group();
+  scene.add(sunGroup);
 
   const loader = new THREE.TextureLoader();
   let mesh = null;
@@ -454,7 +256,7 @@ export function createSunGlobe(canvas, options = {}) {
   let lastOrbitMs = 0;
   /** Slow spin: one full turn about every 100s — cheap (theta += dt). */
   const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
-  let missionMode = "off"; // "off" | "famous" | "landings" | "all"
+  let missionMode = "off"; // "off" | "famous" | "all"
   let regionSites = MISSION_SITES.slice();
   let atmosphere = null;
   let atmosphereMat = null;
@@ -465,8 +267,8 @@ export function createSunGlobe(canvas, options = {}) {
   const raycaster = new THREE.Raycaster();
   const _ndc = new THREE.Vector2();
   const _pinWorld = new THREE.Vector3();
-  const _camFromMoon = new THREE.Vector3();
-  const _pinFromMoon = new THREE.Vector3();
+  const _camFromSun = new THREE.Vector3();
+  const _pinFromSun = new THREE.Vector3();
   let width = 0; // CSS viewport width (window)
   let height = 0;
   let bufferW = 0; // drawing buffer / canvas CSS (includes pan margin)
@@ -474,41 +276,7 @@ export function createSunGlobe(canvas, options = {}) {
   let panMarginPx = 0;
   let homeDist = 3.2;
 
-  const LIGHTING = {
-    dualMode: true,
-    keyBase: 2.0,
-    keyFracGain: 0.85,
-    earth: {
-      ambient: 0.04,
-      earthshineBase: 0.1,
-      earthshineNewGain: 0.36,
-      emissive: 0.04,
-    },
-    orbit: {
-      ambient: 0.09,
-      earthshineBase: 0.18,
-      earthshineNewGain: 0.48,
-      emissive: 0.12,
-    },
-  };
-
-  const key = new THREE.DirectionalLight(0xfff2e6, LIGHTING.keyBase + LIGHTING.keyFracGain);
-  scene.add(key);
-  scene.add(key.target);
-  key.target.position.set(0, 0, 0);
-
-  const earthshine = new THREE.DirectionalLight(0x9eb4d4, LIGHTING.orbit.earthshineBase);
-  earthshine.position.set(0, 0.1, 10);
-  scene.add(earthshine);
-
-  const ambient = new THREE.AmbientLight(0x141820, LIGHTING.orbit.ambient);
-  scene.add(ambient);
-
-  let lastFrac = 0.5;
-  let lastEclipseUmbra = 0;
-  let lastEclipsePen = 0;
-
-  // Camera orbits `target`; moon is always at `target` (required for 2fs pan).
+  // Camera orbits `target`; the Sun stays at `target` (required for 2fs pan).
   const target = new THREE.Vector3(0, 0, 0);
   const spherical = new THREE.Spherical();
   const _offset = new THREE.Vector3();
@@ -538,19 +306,10 @@ export function createSunGlobe(canvas, options = {}) {
     tex.needsUpdate = true;
   }
 
-  function configureNormal(tex) {
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.flipY = true;
-    tex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.generateMipmaps = true;
-    tex.needsUpdate = true;
-  }
 
   function buildMesh(map, cfg) {
     if (mesh) {
-      moonGroup.remove(mesh);
+      sunGroup.remove(mesh);
       mesh.geometry.dispose();
       mesh = null;
     }
@@ -603,7 +362,7 @@ export function createSunGlobe(canvas, options = {}) {
       new THREE.SphereGeometry(RADIUS, cfg.segments, cfg.segments),
       material
     );
-    moonGroup.add(mesh);
+    sunGroup.add(mesh);
     ensureAtmosphere();
     attachMissionPins(mesh);
     applyEphemeris();
@@ -636,24 +395,21 @@ export function createSunGlobe(canvas, options = {}) {
     atmosphere.renderOrder = 10;
     atmosphere.frustumCulled = false;
     atmosphere.scale.setScalar(ATMO_HEIGHT);
-    moonGroup.add(atmosphere);
+    sunGroup.add(atmosphere);
   }
 
   function updateAtmosphereLight() {
     if (!atmosphereMat || !atmosphere) return;
-    moonGroup.getWorldPosition(_atmoCenter);
-    moonGroup.getWorldScale(_atmoScale);
+    sunGroup.getWorldPosition(_atmoCenter);
+    sunGroup.getWorldScale(_atmoScale);
     const g = _atmoScale.x;
     atmosphereMat.uniforms.uPlanetCenter.value.copy(_atmoCenter);
     atmosphereMat.uniforms.uPlanetRadius.value = RADIUS * g;
     atmosphereMat.uniforms.uAtmoRadius.value = RADIUS * ATMO_HEIGHT * g;
   }
 
-  /**
-   * Selenographic → mesh-local. Lon east+, 0° near-side center.
-   * Tuned so after mesh.rotation.y = NEAR_SIDE_Y (−π/2), lon 0 faces the camera.
-   */
-  function latLonToMoonLocal(latDeg, lonDeg, r = RADIUS * 1.014) {
+  /** Carrington lat/lon → mesh-local. Lon east-positive. */
+  function latLonToLocal(latDeg, lonDeg, r = RADIUS * 1.014) {
     const lat = THREE.MathUtils.degToRad(latDeg);
     const lon = THREE.MathUtils.degToRad(lonDeg);
     const x = r * Math.cos(lat) * Math.cos(lon);
@@ -683,15 +439,13 @@ export function createSunGlobe(canvas, options = {}) {
 
     const geo = new THREE.SphereGeometry(0.0125, 10, 10);
     for (const site of regionSites) {
-      const tier = site.famous ? "famous" : site.kind === "impact" || site.kind === "attempt" ? "all" : "landing";
+      const large = !!site.famous;
       const style =
         typeof site.pinColor === "number"
           ? { color: site.pinColor, opacity: 0.98, renderOrder: 5 }
-          : tier === "famous"
+          : large
             ? { color: 0xf0d78c, opacity: 0.98, renderOrder: 5 }
-            : tier === "landing"
-              ? { color: 0x68bce8, opacity: 0.9, renderOrder: 4 }
-              : { color: 0x6bbf8a, opacity: 0.95, renderOrder: 3 };
+            : { color: 0x68bce8, opacity: 0.9, renderOrder: 4 };
       const mat = new THREE.MeshBasicMaterial({
         color: style.color,
         transparent: true,
@@ -701,9 +455,9 @@ export function createSunGlobe(canvas, options = {}) {
       });
       const pin = new THREE.Mesh(geo, mat);
       // Longitude is mirrored so solar east sits on the left, matching the texture.
-      pin.position.copy(latLonToMoonLocal(site.lat, -(Number(site.lon) || 0)));
+      pin.position.copy(latLonToLocal(site.lat, -(Number(site.lon) || 0)));
       pin.userData.mission = site;
-      pin.userData.tier = tier;
+      pin.userData.large = large;
       pin.userData.baseOpacity = style.opacity;
       pin.renderOrder = style.renderOrder;
       missionGroup.add(pin);
@@ -715,22 +469,21 @@ export function createSunGlobe(canvas, options = {}) {
 
   function pinInMode(pin) {
     if (missionMode === "all") return true;
-    if (missionMode === "famous") return !!pin.userData.mission?.famous;
-    if (missionMode === "landings") return pin.userData.tier !== "all";
+    if (missionMode === "famous") return !!pin.userData.large;
     return false;
   }
 
   function updateMissionPinFacing() {
     if (missionMode === "off" || !missionPins.length) return;
-    _camFromMoon.copy(camera.position).sub(target).normalize();
+    _camFromSun.copy(camera.position).sub(target).normalize();
     for (const pin of missionPins) {
       if (!pinInMode(pin)) {
         pin.visible = false;
         continue;
       }
       pin.getWorldPosition(_pinWorld);
-      _pinFromMoon.copy(_pinWorld).sub(target).normalize();
-      const facing = _pinFromMoon.dot(_camFromMoon);
+      _pinFromSun.copy(_pinWorld).sub(target).normalize();
+      const facing = _pinFromSun.dot(_camFromSun);
       // Hide far side / deep limb; soft-fade near edge
       if (facing < 0.05) {
         pin.visible = false;
@@ -777,10 +530,9 @@ export function createSunGlobe(canvas, options = {}) {
     return best;
   }
 
-  /** mode: "off" | "famous" | "landings" | "all" */
+  /** mode: "off" | "famous" | "all" */
   function setMissionsMode(mode) {
-    missionMode =
-      mode === "famous" || mode === "landings" || mode === "all" ? mode : "off";
+    missionMode = mode === "famous" || mode === "all" ? mode : "off";
     if (missionGroup) missionGroup.visible = missionMode !== "off";
     updateMissionPinFacing();
     return missionMode;
@@ -791,7 +543,7 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   function loadLow() {
-    const cfg = LOD.low;
+    const cfg = SURFACE;
     loader.load(cfg.map, (tex) => {
       if (disposed) return;
       configureColor(tex);
@@ -802,45 +554,6 @@ export function createSunGlobe(canvas, options = {}) {
     });
   }
 
-  function upgradeHigh() {
-    return;
-    if (disposed) return;
-    const cfg = LOD.high;
-    let mapDone = null;
-    let normalDone = null;
-
-    const tryApply = () => {
-      if (disposed || !material || !mapDone) return;
-      const oldMap = material.map;
-      const oldNormal = material.normalMap;
-      material.map = mapDone;
-      material.emissiveMap = mapDone;
-      if (normalDone) material.normalMap = normalDone;
-      material.normalScale.set(cfg.normalScale, cfg.normalScale);
-      material.needsUpdate = true;
-      if (oldMap && oldMap !== mapDone) oldMap.dispose();
-      if (normalDone && oldNormal && oldNormal !== normalDone) oldNormal.dispose();
-
-      if (mesh && mesh.geometry.parameters.widthSegments < cfg.segments) {
-        mesh.geometry.dispose();
-        mesh.geometry = new THREE.SphereGeometry(RADIUS, cfg.segments, cfg.segments);
-      }
-      if (typeof onQuality === "function") onQuality("8k");
-    };
-
-    loader.load(cfg.map, (tex) => {
-      if (disposed) return;
-      configureColor(tex);
-      mapDone = tex;
-      tryApply();
-    });
-    loader.load(cfg.normal, (tex) => {
-      if (disposed) return;
-      configureNormal(tex);
-      normalDone = tex;
-      tryApply();
-    });
-  }
 
   function captureSkyPose(date = new Date()) {
     frozenSouthern = observerLat < 0;
@@ -850,7 +563,6 @@ export function createSunGlobe(canvas, options = {}) {
   function applyEphemeris() {
     const phase01 = carringtonPhase(when);
     const l0 = l0Degrees(when);
-    lastFrac = 1;
     if (mesh) {
       mesh.rotation.order = "YXZ";
       // Carrington longitude L0 faces the camera. East is to the left.
@@ -863,8 +575,8 @@ export function createSunGlobe(canvas, options = {}) {
       ? frozenRoll
       : skyRollRad(observerLat, observerLon, when);
     // Solar north stays up. Sky roll would lean the poles for the local horizon.
-    moonGroup.rotation.set(0, 0, 0);
-    moonGroup.position.copy(target);
+    sunGroup.rotation.set(0, 0, 0);
+    sunGroup.position.copy(target);
 
     lastPhaseInfo = {
       phase01,
@@ -916,57 +628,6 @@ export function createSunGlobe(canvas, options = {}) {
     return { lat: observerLat, lon: observerLon };
   }
 
-  function earthViewAmount() {
-    _camDir.copy(camera.position).sub(target).normalize();
-    return THREE.MathUtils.smoothstep(0.38, 0.88, _camDir.z);
-  }
-
-  function lerp(a, b, t) {
-    return a + (b - a) * t;
-  }
-
-  function updateViewLighting() {
-    const frac = lastFrac;
-    const e = LIGHTING.earth;
-    const o = LIGHTING.orbit;
-    const t = LIGHTING.dualMode ? earthViewAmount() : 0;
-    // Same lighting path as normal phase; eclipse only scales/tints that light
-    const eclDim = Math.min(1, lastEclipseUmbra * 0.92 + lastEclipsePen * 0.18);
-    ambient.intensity = lerp(o.ambient, e.ambient, t) * (1 - eclDim * 0.35);
-    earthshine.intensity =
-      lerp(o.earthshineBase, e.earthshineBase, t) +
-      (1 - frac) * lerp(o.earthshineNewGain, e.earthshineNewGain, t) +
-      // Copper residual when direct sun is blocked (same soft fill language as earthshine)
-      lastEclipseUmbra * 0.22;
-    if (earthshine.color) {
-      earthshine.color.setRGB(
-        0.62 + lastEclipseUmbra * 0.38,
-        0.7 - lastEclipseUmbra * 0.42,
-        0.83 - lastEclipseUmbra * 0.7
-      );
-    }
-    if (material && !material.isShaderMaterial) {
-      const baseEm = lerp(o.emissive, e.emissive, t);
-      material.emissiveIntensity = baseEm + lastEclipseUmbra * 0.08;
-      if (material.emissive) {
-        material.emissive.setRGB(
-          1,
-          1 - lastEclipseUmbra * 0.45,
-          1 - lastEclipseUmbra * 0.7
-        );
-      }
-      // Keep albedo warmth mild so MeshStandard terminator stays the shade model
-      if (material.color) {
-        material.color.setRGB(
-          1.04 + lastEclipseUmbra * 0.06,
-          1.02 - lastEclipseUmbra * 0.35,
-          1.0 - lastEclipseUmbra * 0.55
-        );
-      }
-    }
-    key.intensity =
-      (LIGHTING.keyBase + frac * LIGHTING.keyFracGain) * (1 - eclDim * 0.72);
-  }
 
   function readHomePadsPx() {
     let top = 48;
@@ -1039,7 +700,7 @@ export function createSunGlobe(canvas, options = {}) {
     camera.up.set(0, 1, 0);
     camera.lookAt(target);
     // Near plane must be *closer* than the front of the sphere (dist − RADIUS).
-    // Default near=0.05 clipped the moon when zoomed in → hard L/R edges.
+    // Default near=0.05 clipped the disk when zoomed in → hard L/R edges.
     const dist = spherical.radius;
     const frontGap = dist - RADIUS; // distance camera → front of disk
     camera.near = Math.max(0.001, frontGap * 0.35);
@@ -1051,9 +712,8 @@ export function createSunGlobe(canvas, options = {}) {
     return camera.position.distanceTo(target);
   }
 
-  function syncMoon() {
-    moonGroup.position.copy(target);
-    key.target.position.copy(target);
+  function syncSun() {
+    sunGroup.position.copy(target);
   }
 
   /** Extra home lift above safe-band center (CSS px for 0.375in = 1/4" + 1/8"). */
@@ -1082,7 +742,7 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   /**
-   * Positive = shift home moon down (CSS translateY).
+   * Positive = shift home Sun down (CSS translateY).
    * Phone Safari (browser tab only): +1/8". Phone PWA / Chrome: unchanged.
    * iPad: +1/8". Mac / desktop: +1/4".
    */
@@ -1108,7 +768,7 @@ export function createSunGlobe(canvas, options = {}) {
     if (typeof window === "undefined") return 0;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const minSide = Math.min(window.innerWidth || 0, window.innerHeight || 0);
-    // Phone Safari tab: nudge moon down 1/8" at startup / Live home
+    // Phone Safari tab: nudge the Sun down 1/8" at startup / Live home
     if (coarse && minSide <= 500) {
       if (isPhoneSafariBrowser()) return measureCssLength("0.125in", 12);
       return 0;
@@ -1119,7 +779,7 @@ export function createSunGlobe(canvas, options = {}) {
     return measureCssLength("0.25in", 24);
   }
 
-  /** CSS Y so home moon sits in the upper safe band (above bottom info), not mid-screen. */
+  /** CSS Y so home Sun sits in the upper safe band (above bottom info), not mid-screen. */
   function homeScreenOffsetY() {
     const pads = readHomePadsPx();
     // Safe-band center is above the viewport center when bottom pad > top pad.
@@ -1137,7 +797,7 @@ export function createSunGlobe(canvas, options = {}) {
     applyCanvasPanTransform();
     readSpherical();
     writeCamera();
-    syncMoon();
+    syncSun();
     prevCamDist = homeDist;
     applyEphemeris();
   }
@@ -1213,7 +873,7 @@ export function createSunGlobe(canvas, options = {}) {
       camera.position.add(nt.clone().sub(target));
       target.copy(nt);
     }
-    syncMoon();
+    syncSun();
     readSpherical();
   }
 
@@ -1257,8 +917,8 @@ export function createSunGlobe(canvas, options = {}) {
 
     width = w;
     height = h;
-    // Base pan buffer for 2fs. Also must cover home CSS lift (moon sits high so
-    // bottom of host stays filled — otherwise a black strip clips the moon).
+    // Base pan buffer for 2fs. Also must cover home CSS lift (Sun sits high so
+    // bottom of host stays filled — otherwise a black strip clips the disk).
     const homeLift = Math.abs(homeScreenOffsetY());
     panMarginPx = Math.max(
       Math.ceil(Math.max(w, h) * PAN_MARGIN),
@@ -1299,7 +959,7 @@ export function createSunGlobe(canvas, options = {}) {
         readSpherical();
         spherical.radius = homeDist;
         writeCamera();
-        syncMoon();
+        syncSun();
         prevCamDist = homeDist;
       } else {
         applyHomeFraming();
@@ -1602,8 +1262,7 @@ export function createSunGlobe(canvas, options = {}) {
         writeCamera();
       }
     }
-    syncMoon();
-    updateViewLighting();
+    syncSun();
     updateAtmosphereLight();
     if (missionMode !== "off") updateMissionPinFacing();
     renderer.render(scene, camera);
@@ -1665,7 +1324,7 @@ export function createSunGlobe(canvas, options = {}) {
       surface.removeEventListener("wheel", onWheel);
       surface.removeEventListener("contextmenu", onContextMenu);
       if (atmosphere) {
-        moonGroup.remove(atmosphere);
+        sunGroup.remove(atmosphere);
         atmosphere.geometry.dispose();
         atmosphereMat?.dispose();
         atmosphere = null;

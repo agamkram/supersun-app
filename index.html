@@ -71,7 +71,7 @@
       --cell: transparent;
       --panel: rgba(18, 22, 30, 0.58);
       --line: rgba(42, 49, 64, 0.65);
-      --moon: #c8d0e0;
+      --hi: #c8d0e0;
       --mono: "Inter", system-ui, sans-serif;
       --font: "Inter", system-ui, sans-serif;
       /* Compact instrument labels */
@@ -109,7 +109,7 @@
      * because innerHeight stays short of screen.height and clips env() overshoot.
      */
     #stage,
-    #moon-host,
+    #sun-host,
     #touch-plane {
       position: fixed;
       top: calc(-1 * env(safe-area-inset-top, 0px));
@@ -125,7 +125,7 @@
     }
 
     html.pwa-standalone #stage,
-    html.pwa-standalone #moon-host,
+    html.pwa-standalone #sun-host,
     html.pwa-standalone #touch-plane {
       top: 0;
       right: 0;
@@ -136,7 +136,7 @@
     }
 
     /* Clips the oversized GL canvas; black matches clear color */
-    #moon-host {
+    #sun-host {
       z-index: 1;
       overflow: hidden;
       background: #020308;
@@ -149,7 +149,7 @@
       background: transparent;
     }
 
-    #moon-canvas {
+    #sun-canvas {
       display: block;
       width: 100%;
       height: 100%;
@@ -160,12 +160,12 @@
       background: #020308;
     }
 
-    #moon-canvas.is-ready { opacity: 1; }
+    #sun-canvas.is-ready { opacity: 1; }
     /* PWA: no fade — opacity pop reads as a flash on open */
-    html.pwa-standalone #moon-canvas {
+    html.pwa-standalone #sun-canvas {
       transition: none;
     }
-    #moon-canvas:active { cursor: grabbing; }
+    #sun-canvas:active { cursor: grabbing; }
 
     .chrome {
       position: fixed;
@@ -202,7 +202,7 @@
     /*
      * Bottom metrics: one quiet panel, compact instrument rows.
      * pointer-events:none on shell — only controls capture so 2fs works over empty areas.
-     * Moon zooms over this; un-zoom / Live to use the controls.
+     * The Sun zooms over this; un-zoom / Live to use the controls.
      */
     .loc-bar {
       position: fixed;
@@ -260,14 +260,14 @@
 
     .m-grid {
       display: grid;
-      /* Modest Phase bias — keep Illum / Cycle / To full readable */
+      /* Modest altitude bias — keep azimuth / cycle / sunset readable */
       grid-template-columns: 1.35fr 0.9fr 1fr 0.85fr;
       grid-auto-rows: var(--m-row-h);
       gap: 0;
       pointer-events: none;
     }
 
-    /* Station bias — tide times stay compact (clock strings) */
+    /* Flare class needs a little more width than Kp / wind / flux */
     .m-grid-3 {
       grid-template-columns:
         minmax(0, 1.7fr)
@@ -301,7 +301,7 @@
       pointer-events: auto;
     }
 
-    #m-station {
+    #m-flare {
       font-size: 11px;
       line-height: 1.1;
       letter-spacing: -0.02em;
@@ -346,10 +346,6 @@
       background: rgba(240, 215, 140, 0.18);
     }
 
-    #sites-btn[data-mode="landings"] {
-      color: #8bcdf0;
-      background: rgba(104, 188, 232, 0.18);
-    }
 
     #sites-btn[data-mode="all"] {
       color: #8fd4a8;
@@ -435,8 +431,8 @@
     }
 
     .m-cell .v.sm { font-size: 11px; }
-    .m-cell .v.moon {
-      color: var(--moon);
+    .m-cell .v.hi {
+      color: var(--hi);
       font-size: 11px;
       letter-spacing: -0.015em;
     }
@@ -484,11 +480,11 @@
 
       .m-cell .v,
       .m-cell .v.sm,
-      .m-cell .v.moon {
+      .m-cell .v.hi {
         font-size: 13px;
       }
 
-      #m-station {
+      #m-flare {
         font-size: 12px;
       }
 
@@ -582,7 +578,7 @@
 
     /*
      * Phone landscape only (short height). iPad landscape is taller (≥600px)
-     * and keeps the normal / tablet layouts. Shrink stats so the moon stays visible.
+     * and keeps the normal / tablet layouts. Shrink stats so the Sun stays visible.
      */
     @media (orientation: landscape) and (max-height: 500px) {
       .chrome {
@@ -614,7 +610,7 @@
 
       .m-cell .v,
       .m-cell .v.sm,
-      .m-cell .v.moon {
+      .m-cell .v.hi {
         font-size: 9px;
       }
 
@@ -1268,7 +1264,7 @@
 
     /*
      * Night vision: kill white / bright UI so dark-adapted eyes survive.
-     * App stays fully usable. Tap moon (or the badge) to toggle.
+     * App stays fully usable. Tap the Sun (or the badge) to toggle.
      */
     body.is-red-mode {
       --text: #c81820;
@@ -1277,7 +1273,7 @@
       --faint: #4a0608;
       --cell: rgba(12, 0, 0, 0.58);
       --line: #4a0808;
-      --moon: #e02028;
+      --hi: #e02028;
       --panel: rgba(10, 0, 0, 0.94);
       --red-track: #2e0606;
       --red-thumb: #a01018;
@@ -1286,13 +1282,13 @@
       color-scheme: dark;
     }
 
-    body.is-red-mode #moon-host,
+    body.is-red-mode #sun-host,
     body.is-red-mode #stage {
       background: #030000;
     }
 
     /* Deeper blood cast on the globe */
-    body.is-red-mode #moon-host {
+    body.is-red-mode #sun-host {
       filter: sepia(1) hue-rotate(-48deg) saturate(6.2) brightness(0.38) contrast(1.08);
     }
 
@@ -1389,7 +1385,7 @@
       text-shadow: 0 1px 10px rgba(40, 0, 0, 0.7);
     }
 
-    body.is-red-mode .m-cell .v.moon {
+    body.is-red-mode .m-cell .v.hi {
       color: #e01820;
     }
 
@@ -1406,9 +1402,9 @@
 </head>
 <body>
   <div id="stage">
-    <div id="moon-host">
+    <div id="sun-host">
       <canvas
-        id="moon-canvas"
+        id="sun-canvas"
         aria-label="3D Sun. One finger rotates, pinch zooms, two-finger slide pans. Live resets."
       ></canvas>
     </div>
@@ -1426,7 +1422,7 @@
       <div class="m-grid" aria-label="Solar metrics">
         <button type="button" class="m-cell m-cell-fact" data-fact="phase" title="Tap for explanation">
           <div class="k">Altitude</div>
-          <div class="v moon" id="m-phase">—</div>
+          <div class="v hi" id="m-phase">—</div>
         </button>
         <button type="button" class="m-cell m-cell-fact" data-fact="illum" title="Tap for explanation">
           <div class="k">Azimuth</div>
@@ -1457,7 +1453,7 @@
           <div class="v sm" id="m-vsmax">—</div>
         </button>
       </div>
-      <!-- Row order: metrics, rise/high/set + tools, tides, location -->
+      <!-- Row order: metrics, rise/high/set + tools, space weather, location -->
       <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset and display controls">
         <button type="button" class="m-cell m-cell-fact" data-fact="rise" title="Tap for explanation">
           <div class="k">Sunrise</div>
@@ -1494,30 +1490,30 @@
             type="button"
             class="vision-btn"
             id="sites-btn"
-            title="Show mission sites: Famous, Landings, then All"
+            title="Show active regions: large, then all"
             aria-pressed="false"
             data-mode="off"
           >
-            Missions
+            Regions
           </button>
         </div>
       </div>
       <div class="m-grid m-grid-3" aria-label="Space weather">
-        <button type="button" class="m-cell m-cell-fact" data-fact="station" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="flare" title="Tap for explanation">
           <div class="k">Flare</div>
-          <div class="v sm" id="m-station">—</div>
+          <div class="v sm" id="m-flare">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="htide" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="kp" title="Tap for explanation">
           <div class="k">Kp</div>
-          <div class="v sm" id="m-htide">—</div>
+          <div class="v sm" id="m-kp">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="mtide" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="wind" title="Tap for explanation">
           <div class="k">Solar wind</div>
-          <div class="v sm" id="m-mtide">—</div>
+          <div class="v sm" id="m-wind">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="ltide" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="flux" title="Tap for explanation">
           <div class="k">10.7 cm</div>
-          <div class="v sm" id="m-ltide">—</div>
+          <div class="v sm" id="m-flux">—</div>
         </button>
       </div>
 
@@ -1594,7 +1590,7 @@
             aria-label="Carrington rotation"
           />
         </div>
-        <button type="button" class="live-btn is-live" id="live-btn" title="Reset to live moon for now">Live</button>
+        <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
       </div>
     </div>
   </div>
@@ -1615,26 +1611,15 @@
     import { createSunGlobe } from "./sun.js?v=12";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
-    const TIDE_STATIONS_KEY = "supermoon-noaa-tide-stations-v6";
     /** Used when GPS/permission unavailable (X in-app browser, denied, etc.) */
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
-    /** Name tokens that mark inland / river gauges — drop from nearest pick */
-    const INLAND_STATION_RE =
-      /\b(creek|bayou|slough|plantation|drawbridge|highway bridge|railroad bridge|mi\.?\s*above|miles?\s+above|above\s+(entrance|mouth)|ferry landing)\b/i;
     const ROTATION_DAYS = 27.2753;
     const SUN_RADIUS_KM = 695700;
     const MI_PER_KM = 0.621371;
     /** Mean solar angular diameter (arcmin) at 1 AU. */
     const AVG_ANG_ARCMIN = 31.98;
-    /** Proxy first (NOAA datagetter often 403s in-browser); direct mdapi fallback for stations */
-    const NOAA_STATIONS_PROXY = "/api/noaa-stations";
-    const NOAA_STATIONS_DIRECT =
-      "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions";
-    const NOAA_HILO_PROXY = "/api/noaa-hilo";
-    const NOAA_HILO_DIRECT =
-      "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
 
-    const canvas = document.getElementById("moon-canvas");
+    const canvas = document.getElementById("sun-canvas");
     const status = document.getElementById("status");
     const latInput = document.getElementById("lat-input");
     const lonInput = document.getElementById("lon-input");
@@ -1669,39 +1654,15 @@
       ang: document.getElementById("m-ang"),
       vsavg: document.getElementById("m-vsavg"),
       vsmax: document.getElementById("m-vsmax"),
-      station: document.getElementById("m-station"),
-      htide: document.getElementById("m-htide"),
-      mtide: document.getElementById("m-mtide"),
-      ltide: document.getElementById("m-ltide"),
+      flare: document.getElementById("m-flare"),
+      kp: document.getElementById("m-kp"),
+      wind: document.getElementById("m-wind"),
+      flux: document.getElementById("m-flux"),
       rise: document.getElementById("m-rise"),
       high: document.getElementById("m-high"),
       set: document.getElementById("m-set"),
     };
 
-    const PHASE_BLURBS = {
-      "New Moon":
-        "The Moon sits near the Sun in our sky — the sunlit side faces away from Earth, so the disk looks dark.",
-      "Waxing Crescent":
-        "A thin lit crescent is growing after new moon. The bright part is getting larger each night.",
-      "First Quarter":
-        "Half the Earth-facing disk is lit. The Moon is about a quarter of the way through its cycle from new to new.",
-      "Waxing Gibbous":
-        "More than half lit and still growing toward full — bright evenings, climbing later into the night.",
-      "Full Moon":
-        "The whole Earth-facing disk is sunlit. The Moon sits opposite the Sun and is up all night.",
-      "Waning Gibbous":
-        "Still mostly lit, but shrinking after full. You’ll see it later in the night and into morning.",
-      "Last Quarter":
-        "Half lit again, on the way back to new. Often best seen in the predawn sky.",
-      "Waning Crescent":
-        "A thinning crescent heading toward new moon — a delicate morning shape before sunrise.",
-      "Penumbral eclipse":
-        "The Moon is full and passing through Earth’s outer shadow (the penumbra). The disk stays fully “in phase,” but sunlight is faintly muted — often a subtle shading rather than a bite.",
-      "Partial eclipse":
-        "The Moon is full and part of it is inside Earth’s dark umbra. You’ll see a curved shadow eat across the disk while the rest stays bright — then reverse as it exits.",
-      "Total eclipse":
-        "The whole Moon is inside Earth’s umbra. Direct sunlight is blocked; what’s left is sunlight bent through Earth’s atmosphere, often turning the disk copper or red (a “blood moon”).",
-    };
 
     const FACTS = {
       phase: {
@@ -1770,25 +1731,25 @@
           "Local time when the Sun sets below your horizon.\n\n" +
           "Uses your chosen location.",
       },
-      station: {
+      flare: {
         title: "Flare",
         body:
           "The current solar X-ray class from the GOES satellite, via NOAA.\n\n" +
           "A, B, and C are common. M and X are strong flares. The letter is the size; the number is the strength inside that class.",
       },
-      htide: {
+      kp: {
         title: "Kp",
         body:
           "The estimated planetary K index, a measure of geomagnetic activity.\n\n" +
           "0 to 2 is quiet. 5 and above is a geomagnetic storm. NOAA updates this about once a minute.",
       },
-      mtide: {
+      wind: {
         title: "Solar wind",
         body:
           "Speed of the solar wind at Earth, in kilometers per second.\n\n" +
           "A typical speed is around 400. Faster wind often means a more disturbed magnetic field.",
       },
-      ltide: {
+      flux: {
         title: "10.7 cm",
         body:
           "The solar radio flux at 10.7 centimeters, in solar flux units.\n\n" +
@@ -1837,12 +1798,6 @@
     let previewMode = false;
     let previewRaf = 0;
     let metricsRaf = 0;
-    let tideSeq = 0;
-    let tideTimer = 0;
-    /** Last successfully resolved station label (avoid flash to —) */
-    let lastTideStationLabel = "";
-    /** @type {Promise<Array<{id:string,lat:number,lng:number,name?:string,state?:string}>> | null} */
-    let stationsPromise = null;
     /** @type {{ yr: number, maxAng: number } | null} */
     let yearMaxCache = null;
 
@@ -1869,327 +1824,6 @@
       return `${mon} ${day} · ${fmtTime(date)}`;
     }
 
-    function ymdCompact(d) {
-      const y = d.getUTCFullYear();
-      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(d.getUTCDate()).padStart(2, "0");
-      return `${y}${m}${day}`;
-    }
-
-    function haversineKm(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const p1 = (lat1 * Math.PI) / 180;
-      const p2 = (lat2 * Math.PI) / 180;
-      const dp = ((lat2 - lat1) * Math.PI) / 180;
-      const dl = ((lon2 - lon1) * Math.PI) / 180;
-      const a =
-        Math.sin(dp / 2) ** 2 +
-        Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-      return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-    }
-
-    function normalizeStationList(rawList, { requireTypeR = false } = {}) {
-      return (rawList || [])
-        .filter(
-          (s) =>
-            s &&
-            s.id &&
-            Number.isFinite(Number(s.lat)) &&
-            Number.isFinite(Number(s.lng)) &&
-            (!requireTypeR || s.type === "R" || s.type == null)
-        )
-        .map((s) => ({
-          id: String(s.id),
-          lat: Number(s.lat),
-          lng: Number(s.lng),
-          name: String(s.name || s.id)
-            .trim()
-            .replace(/\s+/g, " ")
-            .replace(/\s*,\s*/g, ", "),
-          state: s.state ? String(s.state).trim() : "",
-        }))
-        .filter((s) => !INLAND_STATION_RE.test(s.name));
-    }
-
-    async function fetchStationsFromNetwork() {
-      // 1) Vercel proxy (pre-filtered coastal R stations)
-      try {
-        const res = await fetch(NOAA_STATIONS_PROXY);
-        if (res.ok) {
-          const data = await res.json();
-          const list = normalizeStationList(data.stations || data.list || []);
-          if (list.length >= 10) return list;
-        }
-      } catch (_) {}
-
-      // 2) Direct NOAA metadata (works with CORS *)
-      const res = await fetch(NOAA_STATIONS_DIRECT);
-      if (!res.ok) throw new Error("stations fetch failed");
-      const data = await res.json();
-      const list = normalizeStationList(data.stations || [], {
-        requireTypeR: true,
-      });
-      if (list.length < 10) throw new Error("stations list empty");
-      return list;
-    }
-
-    function loadTideStations() {
-      if (stationsPromise) return stationsPromise;
-      stationsPromise = (async () => {
-        try {
-          const raw = localStorage.getItem(TIDE_STATIONS_KEY);
-          if (raw) {
-            const o = JSON.parse(raw);
-            if (
-              o?.ts &&
-              Date.now() - o.ts < 7 * 86400000 &&
-              Array.isArray(o.list) &&
-              o.list.length > 50
-            ) {
-              return o.list;
-            }
-          }
-        } catch (_) {}
-
-        const list = await fetchStationsFromNetwork();
-        try {
-          localStorage.setItem(
-            TIDE_STATIONS_KEY,
-            JSON.stringify({ ts: Date.now(), list })
-          );
-        } catch (_) {
-          /* quota — in-memory only this session */
-        }
-        return list;
-      })().catch((err) => {
-        stationsPromise = null;
-        throw err;
-      });
-      return stationsPromise;
-    }
-
-    function nearestTideStation(list, lat, lon) {
-      let best = null;
-      let bestD = Infinity;
-      for (let i = 0; i < list.length; i++) {
-        const s = list[i];
-        const d = haversineKm(lat, lon, s.lat, s.lng);
-        if (d < bestD) {
-          bestD = d;
-          best = s;
-        }
-      }
-      return best ? { station: best, km: bestD } : null;
-    }
-
-    function parseNoaaGmt(t) {
-      // "2026-07-19 00:36" as UTC when time_zone=gmt
-      if (!t || typeof t !== "string") return null;
-      const d = new Date(t.replace(" ", "T") + "Z");
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-
-    async function fetchHiloPredictions(stationId, when) {
-      // Clamp to a window NOAA will accept (scrub dates far out can fail)
-      const now = Date.now();
-      let t = when instanceof Date ? when.getTime() : now;
-      if (!Number.isFinite(t)) t = now;
-      const maxPast = now - 20 * 86400000;
-      const maxFuture = now + 40 * 86400000;
-      t = Math.min(maxFuture, Math.max(maxPast, t));
-      const start = new Date(t - 6 * 3600000);
-      const end = new Date(t + 48 * 3600000);
-      const begin = ymdCompact(start);
-      const endStr = ymdCompact(end);
-
-      async function parsePredictions(res) {
-        if (!res.ok) throw new Error("predictions failed");
-        const data = await res.json();
-        if (data?.error?.message) throw new Error(data.error.message);
-        if (data?.message === "Forbidden") throw new Error("predictions forbidden");
-        if (!Array.isArray(data.predictions)) throw new Error("no predictions");
-        return data.predictions;
-      }
-
-      // 1) Proxy
-      try {
-        const res = await fetch(
-          `${NOAA_HILO_PROXY}?` +
-            new URLSearchParams({
-              station: stationId,
-              begin,
-              end: endStr,
-            }).toString()
-        );
-        return await parsePredictions(res);
-      } catch (_) {}
-
-      // 2) Direct (may 403 in some environments)
-      const res = await fetch(
-        `${NOAA_HILO_DIRECT}?` +
-          new URLSearchParams({
-            product: "predictions",
-            application: "supermoon-app",
-            begin_date: begin,
-            end_date: endStr,
-            datum: "MLLW",
-            station: stationId,
-            time_zone: "gmt",
-            units: "english",
-            interval: "hilo",
-            format: "json",
-          }).toString()
-      );
-      return parsePredictions(res);
-    }
-
-    function nextExtremes(predictions, when) {
-      let nextH = null;
-      let nextL = null;
-      const t0 = when.getTime();
-      for (const p of predictions) {
-        const dt = parseNoaaGmt(p.t);
-        if (!dt || dt.getTime() < t0 - 60000) continue;
-        if (p.type === "H" && !nextH) nextH = dt;
-        if (p.type === "L" && !nextL) nextL = dt;
-        if (nextH && nextL) break;
-      }
-      // if nothing after when, take first of each in the window
-      if (!nextH || !nextL) {
-        for (const p of predictions) {
-          const dt = parseNoaaGmt(p.t);
-          if (!dt) continue;
-          if (p.type === "H" && !nextH) nextH = dt;
-          if (p.type === "L" && !nextL) nextL = dt;
-        }
-      }
-      return { nextH, nextL };
-    }
-
-    /** Mid-tide ≈ halfway in time between the next high and next low. */
-    function midTideBetween(nextH, nextL) {
-      if (!(nextH instanceof Date) || !(nextL instanceof Date)) return null;
-      const a = nextH.getTime();
-      const b = nextL.getTime();
-      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-      return new Date((a + b) / 2);
-    }
-
-    /** e.g. "Rhems, Black Mingo Creek, SC" — normalize spaces; shorten long multi-part names */
-    function formatTideStationLabel(st) {
-      if (!st) return "—";
-      let name = (st.name || st.id || "").trim().replace(/\s+/g, " ");
-      name = name.replace(/\s*,\s*/g, ", ");
-      const state = (st.state || "").trim().toUpperCase();
-      let label = name;
-      if (name && state) {
-        const re = new RegExp(`,\\s*${state}$`, "i");
-        label = re.test(name) ? name : `${name}, ${state}`;
-      } else {
-        label = name || st.id || "—";
-      }
-      // Phone cells are narrow: "Place, Long Creek Name, ST" → "Place, ST"
-      const parts = label.split(", ").filter(Boolean);
-      if (parts.length >= 3 && label.length > 22) {
-        const last = parts[parts.length - 1];
-        label = `${parts[0]}, ${last}`;
-      }
-      return label;
-    }
-
-    function paintTideFields({ station, title, high, mid, low }, seq) {
-      if (seq !== tideSeq) return;
-      if (station != null) {
-        el.station.textContent = station;
-        if (title != null) el.station.title = title;
-      }
-      if (high != null) el.htide.textContent = high;
-      if (mid != null) el.mtide.textContent = mid;
-      if (low != null) el.ltide.textContent = low;
-    }
-
-    /** Nearest coastal NOAA station → name + next high/mid/low. */
-    async function updateTidesNow(lat, lon, when) {
-      const seq = ++tideSeq;
-      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !(when instanceof Date)) {
-        paintTideFields({ station: "—", high: "—", mid: "—", low: "—" }, seq);
-        return;
-      }
-
-      // Keep previous station visible while refreshing (no flash to … / —)
-      if (!lastTideStationLabel) {
-        paintTideFields({ station: "…", high: "…", mid: "…", low: "…" }, seq);
-      } else {
-        paintTideFields({ high: "…", mid: "…", low: "…" }, seq);
-      }
-
-      try {
-        const list = await loadTideStations();
-        if (seq !== tideSeq) return;
-        const near = nearestTideStation(list, lat, lon);
-        if (!near?.station) {
-          // Only clear if we never had a good label
-          if (!lastTideStationLabel) {
-            paintTideFields({ station: "—", high: "—", mid: "—", low: "—" }, seq);
-          } else {
-            paintTideFields({ high: "—", mid: "—", low: "—" }, seq);
-          }
-          return;
-        }
-        const place = formatTideStationLabel(near.station);
-        const fullName = (() => {
-          let n = (near.station.name || "").trim().replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ");
-          const st = (near.station.state || "").trim().toUpperCase();
-          if (n && st && !new RegExp(`,\\s*${st}$`, "i").test(n)) n = `${n}, ${st}`;
-          return n || place;
-        })();
-        lastTideStationLabel = place;
-        paintTideFields(
-          {
-            station: place,
-            title: `${fullName} · ${Math.round(near.km)} km away`,
-          },
-          seq
-        );
-
-        try {
-          const preds = await fetchHiloPredictions(near.station.id, when);
-          if (seq !== tideSeq) return;
-          const { nextH, nextL } = nextExtremes(preds, when);
-          const mid = midTideBetween(nextH, nextL);
-          paintTideFields(
-            {
-              high: fmtTime(nextH),
-              mid: fmtTime(mid),
-              low: fmtTime(nextL),
-            },
-            seq
-          );
-        } catch (_) {
-          paintTideFields({ high: "—", mid: "—", low: "—" }, seq);
-        }
-      } catch (_) {
-        if (seq !== tideSeq) return;
-        if (!lastTideStationLabel) {
-          paintTideFields({ station: "—", high: "—", mid: "—", low: "—" }, seq);
-        } else {
-          // Keep last good station; only times fail
-          paintTideFields(
-            { station: lastTideStationLabel, high: "—", mid: "—", low: "—" },
-            seq
-          );
-        }
-      }
-    }
-
-    /** Debounce: goLive/onPhase often fire twice back-to-back */
-    function updateTides(lat, lon, when) {
-      if (tideTimer) clearTimeout(tideTimer);
-      tideTimer = setTimeout(() => {
-        tideTimer = 0;
-        updateTidesNow(lat, lon, when);
-      }, 80);
-    }
 
     function saveLoc(lat, lon, source) {
       try {
@@ -2211,7 +1845,7 @@
 
     let surfaceAnchor = {
       t: Date.parse("2026-10-08T12:00:00Z"),
-      l0: 263,
+      l0: 255,
       rotationDays: ROTATION_DAYS,
     };
 
@@ -2334,10 +1968,10 @@
     let weatherAt = 0;
 
     function paintWeather() {
-      el.station.textContent = weather.flare;
-      el.htide.textContent = weather.kp;
-      el.mtide.textContent = weather.wind;
-      el.ltide.textContent = weather.flux;
+      el.flare.textContent = weather.flare;
+      el.kp.textContent = weather.kp;
+      el.wind.textContent = weather.wind;
+      el.flux.textContent = weather.flux;
     }
 
     function lastRow(data) {
@@ -2513,7 +2147,7 @@
     const missionMeta = document.getElementById("mission-meta");
     const missionBlurb = document.getElementById("mission-blurb");
     const missionClose = document.getElementById("mission-close");
-    let sitesMode = "off"; // "off" | "famous" | "landings" | "all"
+    let sitesMode = "off"; // "off" | "famous" | "all"
 
     function setRedMode(on) {
       redModeOn = !!on;
@@ -2577,9 +2211,6 @@
       if (mode === "famous") {
         sitesBtn.textContent = "Large";
         sitesBtn.title = "Larger active regions — tap for every region";
-      } else if (mode === "landings") {
-        sitesBtn.textContent = "Spots";
-        sitesBtn.title = "Active regions on the Earth-facing side — tap for all";
       } else if (mode === "all") {
         sitesBtn.textContent = "All";
         sitesBtn.title = "All active regions — tap to hide";
@@ -2593,13 +2224,7 @@
     sitesBtn.addEventListener("click", (e) => {
       e.preventDefault();
       const next =
-        sitesMode === "off"
-          ? "famous"
-          : sitesMode === "famous"
-            ? "landings"
-            : sitesMode === "landings"
-              ? "all"
-              : "off";
+        sitesMode === "off" ? "famous" : sitesMode === "famous" ? "all" : "off";
       globe.setMissionsMode(next);
       setSitesUI(next);
     });
@@ -2704,7 +2329,7 @@
       if (previewRaf) cancelAnimationFrame(previewRaf);
       previewRaf = requestAnimationFrame(() => {
         previewRaf = 0;
-        // Freeze sky pose while scrubbing so only terminator walks the cycle
+        // Keep orientation locked while scrubbing the Carrington rotation
         globe.setTime(date, { lockOrient: true, orientDate: new Date() });
         showPhase(globe.getPhaseInfo());
       });

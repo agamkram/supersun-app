@@ -28,7 +28,7 @@ def write(n: int) -> None:
     INDEX.write_text(index2)
     sun = SUN.read_text()
     sun2, c3 = re.subn(r"sun-2k\.jpg\?v=\d+", f"sun-2k.jpg?v={n}", sun)
-    if c3 != 2:
+    if c3 != 1:
         raise SystemExit(f"sun.js texture query count {c3}")
     SUN.write_text(sun2)
 
