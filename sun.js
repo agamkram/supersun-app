@@ -120,11 +120,49 @@ function createStarfield() {
 }
 
 const LOD = {
-  low: { map: "sun-2k.jpg?v=10", segments: 224 },
-  high: { map: "sun-2k.jpg?v=10", segments: 224 },
+  low: { map: "sun-2k.jpg?v=11", segments: 224 },
+  high: { map: "sun-2k.jpg?v=11", segments: 224 },
 };
 /** Matches scripts/update-surface.py. The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
+
+/**
+ * Corona. Same limb shell as Mars and Earth.
+ * BackSide; fades into space. The Sun has no night side, so the rim glows all around.
+ */
+const ATMO_HEIGHT = 1.07;
+const ATMO_FADE = 0.75;
+const ATMO_INTENSITY = 0.6;
+const ATMO_COLOR = new THREE.Color(0xffc04a);
+
+const ATMO_VERTEX = /* glsl */ `
+varying vec3 vWorldPos;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const ATMO_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uIntensity;
+uniform float uFadePower;
+uniform vec3 uPlanetCenter;
+uniform float uPlanetRadius;
+uniform float uAtmoRadius;
+varying vec3 vWorldPos;
+void main() {
+  vec3 rd = normalize(vWorldPos - cameraPosition);
+  vec3 oc = cameraPosition - uPlanetCenter;
+  float dist = length(oc - rd * dot(oc, rd));
+  float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
+  float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
+  float radial = pow(1.0 - h, uFadePower);
+  float glow = radial * uIntensity;
+  gl_FragColor = vec4(uColor * glow, 1.0);
+}
+`;
 
 /** Filled from surface.json. L0 is the Carrington longitude facing Earth at `t`. */
 let surfaceAnchor = {
@@ -418,6 +456,10 @@ export function createSunGlobe(canvas, options = {}) {
   const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
   let missionMode = "off"; // "off" | "famous" | "landings" | "all"
   let regionSites = MISSION_SITES.slice();
+  let atmosphere = null;
+  let atmosphereMat = null;
+  const _atmoCenter = new THREE.Vector3();
+  const _atmoScale = new THREE.Vector3();
   let missionGroup = null;
   const missionPins = [];
   const raycaster = new THREE.Raycaster();
@@ -562,8 +604,49 @@ export function createSunGlobe(canvas, options = {}) {
       material
     );
     moonGroup.add(mesh);
+    ensureAtmosphere();
     attachMissionPins(mesh);
     applyEphemeris();
+  }
+
+  function ensureAtmosphere() {
+    if (atmosphere) return;
+    atmosphereMat = new THREE.ShaderMaterial({
+      vertexShader: ATMO_VERTEX,
+      fragmentShader: ATMO_FRAGMENT,
+      uniforms: {
+        uColor: { value: ATMO_COLOR.clone() },
+        uIntensity: { value: ATMO_INTENSITY },
+        uFadePower: { value: ATMO_FADE },
+        uPlanetCenter: { value: new THREE.Vector3() },
+        uPlanetRadius: { value: RADIUS },
+        uAtmoRadius: { value: RADIUS * ATMO_HEIGHT },
+      },
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      toneMapped: false,
+    });
+    atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(RADIUS, 64, 64),
+      atmosphereMat
+    );
+    atmosphere.renderOrder = 10;
+    atmosphere.frustumCulled = false;
+    atmosphere.scale.setScalar(ATMO_HEIGHT);
+    moonGroup.add(atmosphere);
+  }
+
+  function updateAtmosphereLight() {
+    if (!atmosphereMat || !atmosphere) return;
+    moonGroup.getWorldPosition(_atmoCenter);
+    moonGroup.getWorldScale(_atmoScale);
+    const g = _atmoScale.x;
+    atmosphereMat.uniforms.uPlanetCenter.value.copy(_atmoCenter);
+    atmosphereMat.uniforms.uPlanetRadius.value = RADIUS * g;
+    atmosphereMat.uniforms.uAtmoRadius.value = RADIUS * ATMO_HEIGHT * g;
   }
 
   /**
@@ -1521,6 +1604,7 @@ export function createSunGlobe(canvas, options = {}) {
     }
     syncMoon();
     updateViewLighting();
+    updateAtmosphereLight();
     if (missionMode !== "off") updateMissionPinFacing();
     renderer.render(scene, camera);
   }
@@ -1580,6 +1664,13 @@ export function createSunGlobe(canvas, options = {}) {
       surface.removeEventListener("mousedown", onMouseDown);
       surface.removeEventListener("wheel", onWheel);
       surface.removeEventListener("contextmenu", onContextMenu);
+      if (atmosphere) {
+        moonGroup.remove(atmosphere);
+        atmosphere.geometry.dispose();
+        atmosphereMat?.dispose();
+        atmosphere = null;
+        atmosphereMat = null;
+      }
       if (mesh) {
         mesh.geometry.dispose();
         material?.map?.dispose();
