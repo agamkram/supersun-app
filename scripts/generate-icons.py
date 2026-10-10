@@ -96,14 +96,17 @@ def save_icons() -> None:
         ROOT / "icon-maskable-512.png", "PNG"
     )
     icon_512.resize((192, 192), Image.Resampling.LANCZOS).save(ROOT / "icon-192.png", "PNG")
-    icon_512.resize((180, 180), Image.Resampling.LANCZOS).save(
-        ROOT / "apple-touch-icon.png", "PNG"
-    )
+    apple = icon_512.resize((180, 180), Image.Resampling.LANCZOS).convert("RGBA")
+    apple.save(ROOT / "apple-touch-icon.png", "PNG")
+    apple.save(ROOT / "apple-touch-icon-precomposed.png", "PNG")
+    apple.save(ROOT / "apple-touch-icon-180x180.png", "PNG")
     icon_64 = icon_512.resize((64, 64), Image.Resampling.LANCZOS)
     icon_32 = icon_512.resize((32, 32), Image.Resampling.LANCZOS)
     icon_64.save(ROOT / "favicon-64.png", "PNG")
     icon_32.save(ROOT / "favicon-32.png", "PNG")
-    icon_32.save(ROOT / "favicon.ico", format="ICO", sizes=[(32, 32), (16, 16)])
+    icon_32.convert("RGBA").save(
+        ROOT / "favicon.ico", format="ICO", sizes=[(32, 32), (16, 16)]
+    )
     print("Wrote globe icons in", ROOT)
 
 
