@@ -993,25 +993,7 @@
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
-      <div class="m-grid" aria-label="Solar metrics">
-        <button type="button" class="m-cell m-cell-fact" data-fact="alt" title="Tap for explanation">
-          <div class="k">Altitude</div>
-          <div class="v hi" id="m-alt">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="az" title="Tap for explanation">
-          <div class="k">Azimuth</div>
-          <div class="v" id="m-az">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="cycle" title="Tap for explanation">
-          <div class="k">Carrington</div>
-          <div class="v sm" id="m-cycle">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="size" title="Tap for explanation">
-          <div class="k">Dist · size</div>
-          <div class="v sm" id="m-size">—</div>
-        </button>
-      </div>
-      <!-- Row order: metrics, rise/high/set + tools, space weather, location -->
+      <!-- Row order: rise/high/set + tools, alt/az/Carrington, space weather -->
       <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset day length and display controls">
         <button type="button" class="m-cell m-cell-fact" data-fact="rise" title="Tap for explanation">
           <div class="k">Sunrise</div>
@@ -1049,6 +1031,24 @@
             Orbit
           </button>
         </div>
+      </div>
+      <div class="m-grid" aria-label="Solar metrics">
+        <button type="button" class="m-cell m-cell-fact" data-fact="alt" title="Tap for explanation">
+          <div class="k">Altitude</div>
+          <div class="v hi" id="m-alt">—</div>
+        </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="az" title="Tap for explanation">
+          <div class="k">Azimuth</div>
+          <div class="v" id="m-az">—</div>
+        </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="cycle" title="Tap for explanation">
+          <div class="k">Carrington</div>
+          <div class="v sm" id="m-cycle">—</div>
+        </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="size" title="Tap for explanation">
+          <div class="k">Dist · size</div>
+          <div class="v sm" id="m-size">—</div>
+        </button>
       </div>
       <div class="m-grid m-grid-3" aria-label="Space weather">
         <button type="button" class="m-cell m-cell-fact" data-fact="xray" title="Tap for explanation">
