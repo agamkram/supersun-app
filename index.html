@@ -260,8 +260,8 @@
 
     .m-grid {
       display: grid;
-      /* Modest altitude bias — keep azimuth / cycle / sunset readable */
-      grid-template-columns: 1.35fr 0.9fr 1fr 0.85fr;
+      /* Alt · Az · Carrington · Dist·size */
+      grid-template-columns: 0.95fr 0.95fr 1.15fr 1.45fr;
       grid-auto-rows: var(--m-row-h);
       gap: 0;
       pointer-events: none;
@@ -279,11 +279,11 @@
       gap: 0;
     }
 
-    /* Rise / high / set + tool strip (actions ≠ stats) */
+    /* Rise / noon / set / day length + tool strip */
     .m-grid-rise {
       grid-template-columns:
-        minmax(0, 0.82fr) minmax(0, 0.82fr) minmax(0, 0.82fr)
-        minmax(9.6rem, 1.4fr);
+        minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.9fr)
+        minmax(9.6rem, 1.35fr);
       grid-auto-rows: var(--m-row-h);
       align-items: stretch;
       gap: 0;
@@ -303,7 +303,8 @@
     }
 
     #m-xray,
-    #m-scales {
+    #m-scales,
+    #m-size {
       font-size: 11px;
       line-height: 1.1;
       letter-spacing: -0.02em;
@@ -465,7 +466,7 @@
       }
 
       .m-grid {
-        grid-template-columns: 1.35fr 0.9fr 1fr 0.85fr;
+        grid-template-columns: 0.95fr 0.95fr 1.15fr 1.45fr;
       }
 
       .m-grid-3 {
@@ -494,8 +495,8 @@
 
       .m-grid-rise {
         grid-template-columns:
-          minmax(0, 0.82fr) minmax(0, 0.82fr) minmax(0, 0.82fr)
-          minmax(11rem, 1.4fr);
+          minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.9fr)
+          minmax(11rem, 1.35fr);
       }
 
       .vision-btn {
@@ -645,10 +646,10 @@
       }
     }
 
-    /* Compact location + hemi row (desktop was ballooning under the cycle slider) */
+    /* Location row */
     .loc-strip {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 0;
       flex: 0 0 auto;
       align-items: stretch;
@@ -1424,41 +1425,25 @@
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
       <div class="m-grid" aria-label="Solar metrics">
-        <button type="button" class="m-cell m-cell-fact" data-fact="phase" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="alt" title="Tap for explanation">
           <div class="k">Altitude</div>
-          <div class="v hi" id="m-phase">—</div>
+          <div class="v hi" id="m-alt">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="illum" title="Tap for explanation">
+        <button type="button" class="m-cell m-cell-fact" data-fact="az" title="Tap for explanation">
           <div class="k">Azimuth</div>
-          <div class="v" id="m-illum">—</div>
+          <div class="v" id="m-az">—</div>
         </button>
         <button type="button" class="m-cell m-cell-fact" data-fact="cycle" title="Tap for explanation">
-          <div class="k">Rotation day</div>
+          <div class="k">Carrington</div>
           <div class="v sm" id="m-cycle">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="tofull" title="Tap for explanation">
-          <div class="k">To sunset</div>
-          <div class="v" id="m-tofull">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="dist" title="Tap for explanation">
-          <div class="k">Distance</div>
-          <div class="v sm" id="m-dist">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="ang" title="Tap for explanation">
-          <div class="k">Angular size</div>
-          <div class="v sm" id="m-ang">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="vsavg" title="Tap for explanation">
-          <div class="k">vs average</div>
-          <div class="v sm" id="m-vsavg">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="vsmax" title="Tap for explanation">
-          <div class="k">of yearly max</div>
-          <div class="v sm" id="m-vsmax">—</div>
+        <button type="button" class="m-cell m-cell-fact" data-fact="size" title="Tap for explanation">
+          <div class="k">Dist · size</div>
+          <div class="v sm" id="m-size">—</div>
         </button>
       </div>
       <!-- Row order: metrics, rise/high/set + tools, space weather, location -->
-      <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset and display controls">
+      <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset day length and display controls">
         <button type="button" class="m-cell m-cell-fact" data-fact="rise" title="Tap for explanation">
           <div class="k">Sunrise</div>
           <div class="v sm" id="m-rise">—</div>
@@ -1470,6 +1455,10 @@
         <button type="button" class="m-cell m-cell-fact" data-fact="set" title="Tap for explanation">
           <div class="k">Sunset</div>
           <div class="v sm" id="m-set">—</div>
+        </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="daylen" title="Tap for explanation">
+          <div class="k">Day length</div>
+          <div class="v sm" id="m-daylen">—</div>
         </button>
         <div class="tool-strip" role="group" aria-label="Display controls">
           <button
@@ -1547,17 +1536,10 @@
             </button>
           </div>
         </div>
-        <div class="loc-card hemi-card">
-          <span class="hemi-label">Hemisphere</span>
-          <div class="hemi" role="group" aria-label="Hemisphere">
-            <button type="button" id="hemi-n" class="active">Northern</button>
-            <button type="button" id="hemi-s">Southern</button>
-          </div>
-        </div>
       </div>
     </div>
 
-    <!-- Kept for hemi flip / applyLocation; not shown -->
+    <!-- Hidden lat/lon for applyLocation / storage -->
     <input id="lat-input" class="sr-only" type="number" step="0.0001" min="-90" max="90" value="0" tabindex="-1" aria-hidden="true" />
     <input id="lon-input" class="sr-only" type="number" step="0.0001" min="-180" max="180" value="0" tabindex="-1" aria-hidden="true" />
 
@@ -1624,8 +1606,6 @@
     const ROTATION_DAYS = 27.2753;
     const SUN_RADIUS_KM = 695700;
     const MI_PER_KM = 0.621371;
-    /** Mean solar angular diameter (arcmin) at 1 AU. */
-    const AVG_ANG_ARCMIN = 31.98;
 
     const canvas = document.getElementById("sun-canvas");
     const status = document.getElementById("status");
@@ -1643,8 +1623,6 @@
     const phaseSlider = document.getElementById("phase-slider");
     const cycleDate = document.getElementById("cycle-date");
     const liveBtn = document.getElementById("live-btn");
-    const hemiN = document.getElementById("hemi-n");
-    const hemiS = document.getElementById("hemi-s");
 
     /** @type {import("leaflet").Map | null} */
     let locationMap = null;
@@ -1654,14 +1632,10 @@
     let pickLon = 0;
 
     const el = {
-      phase: document.getElementById("m-phase"),
-      illum: document.getElementById("m-illum"),
+      alt: document.getElementById("m-alt"),
+      az: document.getElementById("m-az"),
       cycle: document.getElementById("m-cycle"),
-      tofull: document.getElementById("m-tofull"),
-      dist: document.getElementById("m-dist"),
-      ang: document.getElementById("m-ang"),
-      vsavg: document.getElementById("m-vsavg"),
-      vsmax: document.getElementById("m-vsmax"),
+      size: document.getElementById("m-size"),
       xray: document.getElementById("m-xray"),
       scales: document.getElementById("m-scales"),
       kp: document.getElementById("m-kp"),
@@ -1670,57 +1644,34 @@
       rise: document.getElementById("m-rise"),
       high: document.getElementById("m-high"),
       set: document.getElementById("m-set"),
+      daylen: document.getElementById("m-daylen"),
     };
 
 
     const FACTS = {
-      phase: {
+      alt: {
         title: "Altitude",
         body:
           "How high the Sun is above your horizon right now, in degrees.\n\n" +
           "0° is on the horizon. 90° is overhead. A negative number means the Sun is still below the horizon.",
       },
-      illum: {
+      az: {
         title: "Azimuth",
         body:
           "The compass direction of the Sun, in degrees.\n\n" +
           "0° is north, 90° east, 180° south, 270° west. It uses your chosen location.",
       },
       cycle: {
-        title: "Rotation day",
+        title: "Carrington",
         body:
           "Days into the current Carrington rotation, out of about 27.3 days.\n\n" +
           "That is one full turn of the Sun as seen from Earth. The slider runs across this rotation. Live sits on today.",
       },
-      tofull: {
-        title: "To sunset",
+      size: {
+        title: "Dist · size",
         body:
-          "Hours until the Sun next sets at your location.\n\n" +
-          "If the Sun is already down, this is the wait until the next sunset.",
-      },
-      dist: {
-        title: "Distance",
-        body:
-          "Earth–Sun distance right now, in astronomical units.\n\n" +
-          "1 AU is the average. The Sun is a little closer in January and a little farther in July.",
-      },
-      ang: {
-        title: "Angular size",
-        body:
-          "How wide the Sun appears in your sky, in arcminutes.\n\n" +
-          "It changes only a few percent through the year, tracking the distance.",
-      },
-      vsavg: {
-        title: "vs average",
-        body:
-          "How today’s apparent size compares with the average.\n\n" +
-          "Above 0% the Sun looks larger than usual. Below 0% it looks smaller.",
-      },
-      vsmax: {
-        title: "of yearly max",
-        body:
-          "Today’s angular size as a share of this year’s largest Sun.\n\n" +
-          "The largest disk is near Earth’s closest approach, in early January.",
+          "Earth–Sun distance in astronomical units, and how wide the Sun appears in arcminutes.\n\n" +
+          "1 AU is the average distance. Apparent size tracks distance — a little larger in January, a little smaller in July.",
       },
       rise: {
         title: "Sunrise",
@@ -1739,6 +1690,12 @@
         body:
           "Local time when the Sun sets below your horizon.\n\n" +
           "Uses your chosen location.",
+      },
+      daylen: {
+        title: "Day length",
+        body:
+          "Hours from sunrise to sunset at your location.\n\n" +
+          "Longer in summer, shorter in winter. Near the poles it can stay up or down all day.",
       },
       xray: {
         title: "X-ray",
@@ -1813,8 +1770,6 @@
     let previewMode = false;
     let previewRaf = 0;
     let metricsRaf = 0;
-    /** @type {{ yr: number, maxAng: number } | null} */
-    let yearMaxCache = null;
 
     function fmtCoord(n, pos, neg) {
       const a = Math.abs(n);
@@ -1887,31 +1842,6 @@
       return ((2 * Math.atan(SUN_RADIUS_KM / distKm) * 180) / Math.PI) * 60;
     }
 
-    function yearMaxAngular(A, when) {
-      const yr = when.getFullYear();
-      if (yearMaxCache && yearMaxCache.yr === yr) return yearMaxCache.maxAng;
-      try {
-        const start = new Date(Date.UTC(yr, 0, 1));
-        const end = new Date(Date.UTC(yr + 1, 0, 1));
-        let apsis = A.SearchPlanetApsis(A.Body.Earth, start);
-        let minAu = Infinity;
-        for (let i = 0; i < 8; i++) {
-          if (!apsis || apsis.time.date >= end) break;
-          if (apsis.kind === 0 || apsis.kind === "Pericenter") {
-            minAu = Math.min(minAu, apsis.dist_au);
-          }
-          apsis = A.NextPlanetApsis(apsis);
-        }
-        const maxAng = Number.isFinite(minAu) && minAu > 0 && minAu < 2
-          ? angArcminFromDistKm(minAu * A.KM_PER_AU)
-          : AVG_ANG_ARCMIN * 1.017;
-        yearMaxCache = { yr, maxAng };
-        return maxAng;
-      } catch (_) {
-        return AVG_ANG_ARCMIN * 1.017;
-      }
-    }
-
     function computeMetrics(info) {
       const A = globalThis.Astronomy;
       if (!A || !info) return null;
@@ -1937,7 +1867,6 @@
         }
       } catch (_) {}
 
-      let hoursToSet = NaN;
       let rise = null;
       let high = null;
       let set = null;
@@ -1947,7 +1876,6 @@
           const setEv = A.SearchRiseSet(A.Body.Sun, obs, -1, when, 2);
           if (setEv) {
             set = setEv;
-            hoursToSet = (setEv.date.getTime() - when.getTime()) / 3600000;
             const riseStart = new Date(setEv.date.getTime() - 36 * 3600000);
             const riseEv = A.SearchRiseSet(A.Body.Sun, obs, +1, riseStart, 2);
             if (riseEv && riseEv.date < setEv.date) {
@@ -1959,22 +1887,25 @@
         }
       } catch (_) {}
 
-      const vsAvg = Number.isFinite(ang) ? ((ang - AVG_ANG_ARCMIN) / AVG_ANG_ARCMIN) * 100 : NaN;
-      const maxAng = yearMaxAngular(A, when);
-      const vsMax = Number.isFinite(ang) && maxAng > 0 ? (ang / maxAng) * 100 : NaN;
+      const riseDate = rise ? rise.date : null;
+      const setDate = set ? set.date : null;
+      let dayLenHr = NaN;
+      if (riseDate && setDate) {
+        const hrs = (setDate.getTime() - riseDate.getTime()) / 3600000;
+        if (Number.isFinite(hrs) && hrs > 0 && hrs <= 48) dayLenHr = hrs;
+      }
+
       return {
         alt,
         az,
         phase01,
         cycleDay: (Number.isFinite(phase01) ? phase01 : livePhase01(when)) * ROTATION_DAYS,
-        hoursToSet,
         distAu: distKm / A.KM_PER_AU,
         ang,
-        vsAvg,
-        vsMax,
-        rise: rise ? rise.date : null,
+        dayLenHr,
+        rise: riseDate,
         high: high && high.time ? high.time.date : null,
-        set: set ? set.date : null,
+        set: setDate,
         when,
       };
     }
@@ -2088,20 +2019,22 @@
       const m = computeMetrics(info);
       if (!m) return;
       if (!previewMode && Number.isFinite(m.phase01)) syncSliderToPhase01(m.phase01);
-      el.phase.textContent = Number.isFinite(m.alt) ? `${Math.round(m.alt)}°` : "—";
-      el.illum.textContent = Number.isFinite(m.az) ? `${Math.round(m.az)}°` : "—";
+      el.alt.textContent = Number.isFinite(m.alt) ? `${Math.round(m.alt)}°` : "—";
+      el.az.textContent = Number.isFinite(m.az) ? `${Math.round(m.az)}°` : "—";
       el.cycle.textContent = `${m.cycleDay.toFixed(1)}/${ROTATION_DAYS.toFixed(1)}`;
-      el.tofull.textContent = Number.isFinite(m.hoursToSet) ? `${m.hoursToSet.toFixed(1)} hr` : "—";
-      el.dist.textContent = Number.isFinite(m.distAu) ? `${m.distAu.toFixed(3)} AU` : "—";
-      el.ang.textContent = Number.isFinite(m.ang) ? `${m.ang.toFixed(1)}′` : "—";
-      if (Number.isFinite(m.vsAvg)) {
-        const s = m.vsAvg >= 0 ? "+" : "";
-        el.vsavg.textContent = `${s}${m.vsAvg.toFixed(1)}%`;
-      } else el.vsavg.textContent = "—";
-      el.vsmax.textContent = Number.isFinite(m.vsMax) ? `${m.vsMax.toFixed(0)}%` : "—";
+      if (Number.isFinite(m.distAu) && Number.isFinite(m.ang)) {
+        el.size.textContent = `${m.distAu.toFixed(3)} AU · ${m.ang.toFixed(1)}′`;
+      } else if (Number.isFinite(m.distAu)) {
+        el.size.textContent = `${m.distAu.toFixed(3)} AU`;
+      } else if (Number.isFinite(m.ang)) {
+        el.size.textContent = `${m.ang.toFixed(1)}′`;
+      } else {
+        el.size.textContent = "—";
+      }
       el.rise.textContent = fmtTime(m.rise);
       el.high.textContent = fmtTime(m.high);
       el.set.textContent = fmtTime(m.set);
+      el.daylen.textContent = Number.isFinite(m.dayLenHr) ? `${m.dayLenHr.toFixed(1)} hr` : "—";
       cycleDate.textContent = fmtDateTime(m.when);
       updateSpaceWeather(false);
     }
@@ -2117,7 +2050,7 @@
 
     function setLocationTitle(source) {
       if (!locLabel) return;
-      // GPS → Current; baked-in fallback → Default; map/hemi/saved → Chosen
+      // GPS → Current; baked-in fallback → Default; map/saved → Chosen
       if (source === "gps") locLabel.textContent = "Current location";
       else if (source === "default") locLabel.textContent = "Default location";
       else locLabel.textContent = "Chosen location";
@@ -2131,18 +2064,7 @@
       latInput.value = Number(lat).toFixed(4);
       lonInput.value = Number(lon).toFixed(4);
       locCoords.textContent = `${fmtCoord(lat, "N", "S")} · ${fmtCoord(lon, "E", "W")}`;
-      const south = Number(lat) < 0;
-      hemiN.classList.toggle("active", !south);
-      hemiS.classList.toggle("active", south);
       if (source != null) setLocationTitle(source);
-    }
-
-    function setHemisphere(southern) {
-      const latAbs = Math.abs(Number(latInput.value) || 35);
-      const lon = Number(lonInput.value) || 0;
-      const lat = southern ? -latAbs : latAbs;
-      applyLocation(lat, lon, "hemi");
-      if (!previewMode) goLive();
     }
 
     function setLiveUI() {
@@ -2399,8 +2321,6 @@
       },
       { passive: false }
     );
-    hemiN.addEventListener("click", () => setHemisphere(false));
-    hemiS.addEventListener("click", () => setHemisphere(true));
 
     function updateMapCoordsDisplay() {
       locMapCoords.textContent = `${fmtCoord(pickLat, "N", "S")} · ${fmtCoord(pickLon, "E", "W")}`;
