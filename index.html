@@ -260,8 +260,8 @@
 
     .m-grid {
       display: grid;
-      /* Alt · Az · Carrington · Dist·size */
-      grid-template-columns: 0.95fr 0.95fr 1.15fr 1.45fr;
+      /* Alt · Az · Carrington · Dist · Size */
+      grid-template-columns: 0.95fr 0.95fr 1.2fr 1.05fr 0.85fr;
       grid-auto-rows: var(--m-row-h);
       gap: 0;
       pointer-events: none;
@@ -303,8 +303,7 @@
     }
 
     #m-xray,
-    #m-scales,
-    #m-size {
+    #m-scales {
       font-size: 11px;
       line-height: 1.1;
       letter-spacing: -0.02em;
@@ -455,7 +454,7 @@
       }
 
       .m-grid {
-        grid-template-columns: 0.95fr 0.95fr 1.15fr 1.45fr;
+        grid-template-columns: 0.95fr 0.95fr 1.2fr 1.05fr 0.85fr;
       }
 
       .m-grid-3 {
@@ -1045,8 +1044,12 @@
           <div class="k">Carrington</div>
           <div class="v sm" id="m-cycle">—</div>
         </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="dist" title="Tap for explanation">
+          <div class="k">Distance</div>
+          <div class="v sm" id="m-dist">—</div>
+        </button>
         <button type="button" class="m-cell m-cell-fact" data-fact="size" title="Tap for explanation">
-          <div class="k">Dist · size</div>
+          <div class="k">Size</div>
           <div class="v sm" id="m-size">—</div>
         </button>
       </div>
@@ -1123,6 +1126,7 @@
       alt: document.getElementById("m-alt"),
       az: document.getElementById("m-az"),
       cycle: document.getElementById("m-cycle"),
+      dist: document.getElementById("m-dist"),
       size: document.getElementById("m-size"),
       xray: document.getElementById("m-xray"),
       scales: document.getElementById("m-scales"),
@@ -1149,9 +1153,13 @@
         title: "Carrington",
         body: "Days into this ~27.3-day turn as seen from Earth. The slider walks it; Live is today.",
       },
+      dist: {
+        title: "Distance",
+        body: "Earth–Sun distance in AU. 1 AU is the average; a bit closer in January.",
+      },
       size: {
-        title: "Dist · size",
-        body: "Earth–Sun distance in AU, and apparent width in arcminutes. A bit larger in January.",
+        title: "Size",
+        body: "Apparent width in arcminutes. Tracks distance — a bit larger in January.",
       },
       rise: {
         title: "Sunrise",
@@ -1440,15 +1448,8 @@
       el.alt.textContent = Number.isFinite(m.alt) ? `${Math.round(m.alt)}°` : "—";
       el.az.textContent = Number.isFinite(m.az) ? `${Math.round(m.az)}°` : "—";
       el.cycle.textContent = `${m.cycleDay.toFixed(1)}/${ROTATION_DAYS.toFixed(1)}`;
-      if (Number.isFinite(m.distAu) && Number.isFinite(m.ang)) {
-        el.size.textContent = `${m.distAu.toFixed(3)} AU · ${m.ang.toFixed(1)}′`;
-      } else if (Number.isFinite(m.distAu)) {
-        el.size.textContent = `${m.distAu.toFixed(3)} AU`;
-      } else if (Number.isFinite(m.ang)) {
-        el.size.textContent = `${m.ang.toFixed(1)}′`;
-      } else {
-        el.size.textContent = "—";
-      }
+      el.dist.textContent = Number.isFinite(m.distAu) ? `${m.distAu.toFixed(3)} AU` : "—";
+      el.size.textContent = Number.isFinite(m.ang) ? `${m.ang.toFixed(1)}′` : "—";
       el.rise.textContent = fmtTime(m.rise);
       el.high.textContent = fmtTime(m.high);
       el.set.textContent = fmtTime(m.set);
