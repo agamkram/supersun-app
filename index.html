@@ -1096,7 +1096,6 @@
     import { createSunGlobe } from "./sun.js?v=13";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
-    /** Used when GPS/permission unavailable (X in-app browser, denied, etc.) */
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
     const ROTATION_DAYS = 27.2753;
     const SUN_RADIUS_KM = 695700;
@@ -1671,27 +1670,7 @@
       { passive: false }
     );
 
-    function requestUserLocation() {
-      if (!navigator.geolocation) return;
-      if (
-        typeof window.isSecureContext === "boolean" &&
-        !window.isSecureContext &&
-        location.hostname !== "localhost" &&
-        location.hostname !== "127.0.0.1"
-      ) {
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          applyLocation(pos.coords.latitude, pos.coords.longitude, "gps");
-          if (!previewMode) goLive();
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-      );
-    }
-
-    // Boot: saved or Asheville default; silent GPS may refine when allowed.
+    // Boot: saved coords or Asheville default. No location prompt.
     const saved = loadSavedLoc();
     if (saved) {
       applyLocation(saved.lat, saved.lon, saved.source || "saved");
@@ -1702,7 +1681,6 @@
     requestAnimationFrame(() => {
       goLive();
       startOrbitDefault();
-      requestUserLocation();
     });
 
     setInterval(() => {

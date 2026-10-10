@@ -1,7 +1,7 @@
 {
   "name": "SuperSun",
   "short_name": "SuperSun",
-  "description": "Hi-res 3D Sun you can orbit, with live space weather and sky times for your place.",
+  "description": "Hi-res 3D Sun you can orbit, with live space weather and local sky times.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020308",
