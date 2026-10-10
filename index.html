@@ -1345,8 +1345,8 @@
           const setEv = A.SearchRiseSet(A.Body.Sun, obs, -1, when, 2);
           if (setEv) {
             set = setEv;
-            const riseStart = new Date(setEv.date.getTime() - 36 * 3600000);
-            const riseEv = A.SearchRiseSet(A.Body.Sun, obs, +1, riseStart, 2);
+            const riseStart = new Date(setEv.date.getTime() - 28 * 3600000);
+            const riseEv = A.SearchRiseSet(A.Body.Sun, obs, +1, riseStart, 1.2);
             if (riseEv && riseEv.date < setEv.date) {
               rise = riseEv;
               const tr = A.SearchHourAngle(A.Body.Sun, obs, 0, riseEv.date, +1);
