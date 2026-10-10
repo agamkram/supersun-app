@@ -4,7 +4,6 @@
  * The texture is a Carrington map; the longitude facing Earth is in surface.json.
  */
 import * as THREE from "three";
-import { MISSION_SITES } from "./missions.js";
 
 const RADIUS = 1;
 const HOME_FILL = 0.9;
@@ -209,8 +208,7 @@ export function createSunGlobe(canvas, options = {}) {
     onReady = null,
     onQuality = null,
     onPhase = null,
-    onTap = null,
-    onMissionTap = null,
+    onTap = null = null,
   } = options;
   const surface =
     (typeof document !== "undefined" && document.getElementById("touch-plane")) ||
@@ -256,19 +254,10 @@ export function createSunGlobe(canvas, options = {}) {
   let lastOrbitMs = 0;
   /** Slow spin: one full turn about every 100s — cheap (theta += dt). */
   const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
-  let missionMode = "off"; // "off" | "famous" | "all"
-  let regionSites = MISSION_SITES.slice();
   let atmosphere = null;
   let atmosphereMat = null;
   const _atmoCenter = new THREE.Vector3();
   const _atmoScale = new THREE.Vector3();
-  let missionGroup = null;
-  const missionPins = [];
-  const raycaster = new THREE.Raycaster();
-  const _ndc = new THREE.Vector2();
-  const _pinWorld = new THREE.Vector3();
-  const _camFromSun = new THREE.Vector3();
-  const _pinFromSun = new THREE.Vector3();
   let width = 0; // CSS viewport width (window)
   let height = 0;
   let bufferW = 0; // drawing buffer / canvas CSS (includes pan margin)
@@ -364,7 +353,6 @@ export function createSunGlobe(canvas, options = {}) {
     );
     sunGroup.add(mesh);
     ensureAtmosphere();
-    attachMissionPins(mesh);
     applyEphemeris();
   }
 
@@ -406,140 +394,6 @@ export function createSunGlobe(canvas, options = {}) {
     atmosphereMat.uniforms.uPlanetCenter.value.copy(_atmoCenter);
     atmosphereMat.uniforms.uPlanetRadius.value = RADIUS * g;
     atmosphereMat.uniforms.uAtmoRadius.value = RADIUS * ATMO_HEIGHT * g;
-  }
-
-  /** Carrington lat/lon → mesh-local. Lon east-positive. */
-  function latLonToLocal(latDeg, lonDeg, r = RADIUS * 1.014) {
-    const lat = THREE.MathUtils.degToRad(latDeg);
-    const lon = THREE.MathUtils.degToRad(lonDeg);
-    const x = r * Math.cos(lat) * Math.cos(lon);
-    const y = r * Math.sin(lat);
-    const z = -r * Math.cos(lat) * Math.sin(lon);
-    return new THREE.Vector3(x, y, z);
-  }
-
-  function disposeMissionPins() {
-    if (!missionGroup) return;
-    const geos = new Set();
-    missionGroup.traverse((obj) => {
-      if (obj.geometry) geos.add(obj.geometry);
-      if (obj.material) obj.material.dispose();
-    });
-    geos.forEach((g) => g.dispose());
-    if (missionGroup.parent) missionGroup.parent.remove(missionGroup);
-    missionGroup = null;
-    missionPins.length = 0;
-  }
-
-  function attachMissionPins(parentMesh) {
-    disposeMissionPins();
-    missionGroup = new THREE.Group();
-    missionGroup.name = "mission-pins";
-    missionGroup.visible = missionMode !== "off";
-
-    const geo = new THREE.SphereGeometry(0.0125, 10, 10);
-    for (const site of regionSites) {
-      const large = !!site.famous;
-      const style =
-        typeof site.pinColor === "number"
-          ? { color: site.pinColor, opacity: 0.98, renderOrder: 5 }
-          : large
-            ? { color: 0xf0d78c, opacity: 0.98, renderOrder: 5 }
-            : { color: 0x68bce8, opacity: 0.9, renderOrder: 4 };
-      const mat = new THREE.MeshBasicMaterial({
-        color: style.color,
-        transparent: true,
-        opacity: style.opacity,
-        depthTest: true,
-        toneMapped: false,
-      });
-      const pin = new THREE.Mesh(geo, mat);
-      // Longitude is mirrored so solar east sits on the left, matching the texture.
-      pin.position.copy(latLonToLocal(site.lat, -(Number(site.lon) || 0)));
-      pin.userData.mission = site;
-      pin.userData.large = large;
-      pin.userData.baseOpacity = style.opacity;
-      pin.renderOrder = style.renderOrder;
-      missionGroup.add(pin);
-      missionPins.push(pin);
-    }
-    parentMesh.add(missionGroup);
-    updateMissionPinFacing();
-  }
-
-  function pinInMode(pin) {
-    if (missionMode === "all") return true;
-    if (missionMode === "famous") return !!pin.userData.large;
-    return false;
-  }
-
-  function updateMissionPinFacing() {
-    if (missionMode === "off" || !missionPins.length) return;
-    _camFromSun.copy(camera.position).sub(target).normalize();
-    for (const pin of missionPins) {
-      if (!pinInMode(pin)) {
-        pin.visible = false;
-        continue;
-      }
-      pin.getWorldPosition(_pinWorld);
-      _pinFromSun.copy(_pinWorld).sub(target).normalize();
-      const facing = _pinFromSun.dot(_camFromSun);
-      // Hide far side / deep limb; soft-fade near edge
-      if (facing < 0.05) {
-        pin.visible = false;
-      } else {
-        pin.visible = true;
-        const base = pin.userData.baseOpacity || 0.9;
-        pin.material.opacity = THREE.MathUtils.clamp(base * (0.35 + facing * 0.7), base * 0.35, base);
-      }
-    }
-  }
-
-  function clientToNdc(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const w = Math.max(rect.width, 1);
-    const h = Math.max(rect.height, 1);
-    _ndc.x = ((clientX - rect.left) / w) * 2 - 1;
-    _ndc.y = -((clientY - rect.top) / h) * 2 + 1;
-  }
-
-  function pickMissionAt(clientX, clientY) {
-    if (missionMode === "off" || !missionPins.length) return null;
-    clientToNdc(clientX, clientY);
-    raycaster.setFromCamera(_ndc, camera);
-    const visiblePins = missionPins.filter((p) => p.visible);
-    const hits = raycaster.intersectObjects(visiblePins, false);
-    if (hits.length) return hits[0].object.userData.mission || null;
-    // Fallback: nearest pin in screen space within ~28px
-    let best = null;
-    let bestD = 28;
-    const rect = canvas.getBoundingClientRect();
-    for (const pin of missionPins) {
-      if (!pin.visible) continue;
-      pin.getWorldPosition(_pinWorld);
-      _pinWorld.project(camera);
-      if (_pinWorld.z > 1) continue;
-      const sx = (_pinWorld.x * 0.5 + 0.5) * rect.width + rect.left;
-      const sy = (-_pinWorld.y * 0.5 + 0.5) * rect.height + rect.top;
-      const d = Math.hypot(clientX - sx, clientY - sy);
-      if (d < bestD) {
-        bestD = d;
-        best = pin.userData.mission;
-      }
-    }
-    return best;
-  }
-
-  /** mode: "off" | "famous" | "all" */
-  function setMissionsMode(mode) {
-    missionMode = mode === "famous" || mode === "all" ? mode : "off";
-    if (missionGroup) missionGroup.visible = missionMode !== "off";
-    updateMissionPinFacing();
-    return missionMode;
-  }
-
-  function getMissionsMode() {
-    return missionMode;
   }
 
   function loadLow() {
@@ -984,7 +838,7 @@ export function createSunGlobe(canvas, options = {}) {
       el &&
       el.closest &&
       el.closest(
-        "input,button,select,textarea,a,label,#loc-dialog,.leaflet-container,.loc-dialog,#mission-sheet,#fact-sheet,.cycle,.slider-track,.cycle-controls"
+        "input,button,select,textarea,a,label,#loc-dialog,.leaflet-container,.loc-dialog,#fact-sheet,.cycle,.slider-track,.cycle-controls"
       )
     );
   }
@@ -1008,13 +862,6 @@ export function createSunGlobe(canvas, options = {}) {
     if (Date.now() - gesture.t0 > TAP_MAX_MS) return;
     const x = Number.isFinite(gesture.sx) ? gesture.sx : gesture.x;
     const y = Number.isFinite(gesture.sy) ? gesture.sy : gesture.y;
-    if (missionMode !== "off" && Number.isFinite(x) && Number.isFinite(y)) {
-      const site = pickMissionAt(x, y);
-      if (site && typeof onMissionTap === "function") {
-        onMissionTap(site);
-        return;
-      }
-    }
     if (typeof onTap === "function") onTap();
   }
 
@@ -1233,10 +1080,6 @@ export function createSunGlobe(canvas, options = {}) {
   document.body.style.touchAction = "none";
 
 
-  function setRegions(sites) {
-    regionSites = Array.isArray(sites) ? sites : [];
-    if (mesh) attachMissionPins(mesh);
-  }
 
   function setOrbiting(on) {
     orbiting = !!on;
@@ -1264,7 +1107,6 @@ export function createSunGlobe(canvas, options = {}) {
     }
     syncSun();
     updateAtmosphereLight();
-    if (missionMode !== "off") updateMissionPinFacing();
     renderer.render(scene, camera);
   }
 
@@ -1298,17 +1140,12 @@ export function createSunGlobe(canvas, options = {}) {
     setTime,
     setOrbiting,
     isOrbiting,
-    setMissionsMode,
-    setRegions,
-    getMissionsMode,
     getPhaseInfo,
     getObserver,
     isReady: () => ready,
     dispose() {
       disposed = true;
       orbiting = false;
-      missionMode = "off";
-      disposeMissionPins();
       cancelAnimationFrame(animId);
       window.removeEventListener("touchstart", onTouchStart, true);
       window.removeEventListener("touchmove", onTouchMove, true);

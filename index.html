@@ -283,7 +283,7 @@
     .m-grid-rise {
       grid-template-columns:
         minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.9fr)
-        minmax(9.6rem, 1.35fr);
+        minmax(6.8rem, 1.1fr);
       grid-auto-rows: var(--m-row-h);
       align-items: stretch;
       gap: 0;
@@ -293,7 +293,7 @@
       display: flex;
       align-items: stretch;
       gap: 1px;
-      min-width: 9.6rem;
+      min-width: 6.8rem;
       width: 100%;
       padding: 1px;
       border-radius: 5px;
@@ -334,9 +334,6 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    #sites-btn {
-      min-width: 3.8rem;
-    }
 
     /* On only — no hover “third” look */
     .vision-btn[aria-pressed="true"] {
@@ -344,16 +341,8 @@
       color: var(--text);
     }
 
-    #sites-btn[data-mode="famous"] {
-      color: #f0d78c;
-      background: rgba(240, 215, 140, 0.18);
-    }
 
 
-    #sites-btn[data-mode="all"] {
-      color: #8fd4a8;
-      background: rgba(107, 191, 138, 0.2);
-    }
 
     body.is-red-mode .vision-btn {
       background: transparent;
@@ -496,7 +485,7 @@
       .m-grid-rise {
         grid-template-columns:
           minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.78fr) minmax(0, 0.9fr)
-          minmax(11rem, 1.35fr);
+          minmax(7.4rem, 1.1fr);
       }
 
       .vision-btn {
@@ -505,9 +494,6 @@
         padding: 0 0.45rem;
       }
 
-      #sites-btn {
-        min-width: 4.2rem;
-      }
 
       .loc-strip {
         gap: 0;
@@ -619,9 +605,6 @@
         padding: 0 0.25rem;
       }
 
-      #sites-btn {
-        min-width: 2.8rem;
-      }
 
       .loc-strip {
         gap: 0;
@@ -873,93 +856,14 @@
     }
 
     /* Mission pin detail — short sheet over the globe */
-    .mission-sheet {
-      position: fixed;
-      z-index: 12;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      top: 0;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      padding:
-        0
-        max(0.75rem, env(safe-area-inset-right))
-        max(0.75rem, env(safe-area-inset-bottom))
-        max(0.75rem, env(safe-area-inset-left));
-      background: rgba(0, 0, 0, 0.45);
-      pointer-events: auto;
-      touch-action: manipulation;
-    }
 
-    .mission-sheet[hidden] {
-      display: none !important;
-    }
 
-    .mission-sheet-card {
-      width: min(420px, 100%);
-      background: rgba(12, 16, 24, 0.94);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 0.85rem 1rem 0.95rem;
-      display: grid;
-      gap: 0.35rem;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-    }
 
-    .mission-sheet-card h2 {
-      margin: 0;
-      font-family: var(--font);
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--text);
-      letter-spacing: 0.02em;
-    }
 
-    .mission-sheet-meta {
-      margin: 0;
-      font-family: var(--font);
-      font-size: 11px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      color: var(--dim);
-      letter-spacing: -0.01em;
-    }
 
-    .mission-sheet-blurb {
-      margin: 0.15rem 0 0.35rem;
-      font-family: var(--font);
-      font-size: 0.88rem;
-      line-height: 1.35;
-      color: var(--text);
-    }
 
-    .mission-sheet-card button {
-      justify-self: end;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 0.35rem 0.85rem;
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text);
-      font-family: var(--font);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
 
-    body.is-red-mode .mission-sheet-card {
-      background: rgba(18, 4, 6, 0.94);
-      border-color: #3a0c0c;
-    }
 
-    body.is-red-mode .mission-sheet-card button {
-      background: rgba(40, 4, 4, 0.55);
-      border-color: #3a0c0c;
-    }
 
     body.is-red-mode button.m-cell-fact:active {
       background: rgba(40, 4, 4, 0.55);
@@ -1426,16 +1330,6 @@
           >
             Orbit
           </button>
-          <button
-            type="button"
-            class="vision-btn"
-            id="sites-btn"
-            title="Show active regions: large, then all"
-            aria-pressed="false"
-            data-mode="off"
-          >
-            Regions
-          </button>
         </div>
       </div>
       <div class="m-grid m-grid-3" aria-label="Space weather">
@@ -1504,14 +1398,6 @@
       </div>
     </div>
 
-    <div id="mission-sheet" class="mission-sheet" hidden role="dialog" aria-modal="true" aria-label="Mission details">
-      <div class="mission-sheet-card">
-        <h2 id="mission-name">—</h2>
-        <p class="mission-sheet-meta" id="mission-meta">—</p>
-        <p class="mission-sheet-blurb" id="mission-blurb">—</p>
-        <button type="button" id="mission-close">Close</button>
-      </div>
-    </div>
 
     <div class="cycle">
       <div class="cycle-date" id="cycle-date">—</div>
@@ -1927,40 +1813,6 @@
       paintWeather();
     }
 
-    async function updateRegions() {
-      try {
-        const rows = await fetch("https://services.swpc.noaa.gov/json/solar_regions.json").then((r) => r.json());
-        if (!Array.isArray(rows) || !rows.length) return;
-        const day = rows.reduce((a, r) => (String(r.observed_date || "") > a ? String(r.observed_date) : a), "");
-        const byId = new Map();
-        for (const r of rows) {
-          if (String(r.observed_date || "") !== day) continue;
-          if (r.latitude == null || r.carrington_longitude == null) continue;
-          const prev = byId.get(r.region);
-          const spots = Number(r.number_spots) || 0;
-          if (!prev || spots > (Number(prev.number_spots) || 0)) byId.set(r.region, r);
-        }
-        const sites = [...byId.values()].map((r) => {
-          const spots = Number(r.number_spots) || 0;
-          const parts = [r.location, r.spot_class, spots ? `${spots} spots` : ""].filter(Boolean);
-          return {
-            id: `ar${r.region}`,
-            name: `AR ${r.region}`,
-            lat: r.latitude,
-            lon: r.carrington_longitude,
-            famous: spots >= 5,
-            meta: parts.join(" · "),
-            blurb: `Active region on the Earth-facing side, ${day}. Carrington longitude ${r.carrington_longitude}.`,
-          };
-        });
-        if (sites.length && !sites.some((s) => s.famous)) {
-          sites.forEach((s) => {
-            s.famous = true;
-          });
-        }
-        globe.setRegions(sites);
-      } catch (_) {}
-    }
 
     function paintMetrics(info) {
       const m = computeMetrics(info);
@@ -2056,13 +1908,6 @@
     let redModeOn = false;
     const visionBtn = document.getElementById("vision-btn");
     const orbitBtn = document.getElementById("orbit-btn");
-    const sitesBtn = document.getElementById("sites-btn");
-    const missionSheet = document.getElementById("mission-sheet");
-    const missionName = document.getElementById("mission-name");
-    const missionMeta = document.getElementById("mission-meta");
-    const missionBlurb = document.getElementById("mission-blurb");
-    const missionClose = document.getElementById("mission-close");
-    let sitesMode = "off"; // "off" | "famous" | "all"
 
     function setRedMode(on) {
       redModeOn = !!on;
@@ -2104,53 +1949,6 @@
       setOrbitUI(next);
     });
 
-    function closeMissionSheet() {
-      missionSheet.hidden = true;
-    }
-
-    function openMissionSheet(site) {
-      if (!site) return;
-      missionName.textContent = site.name || "—";
-      const year = site.year != null ? String(site.year) : "";
-      const agency = site.agency || "";
-      missionMeta.textContent =
-        site.meta || [year, agency].filter(Boolean).join(" · ") || "—";
-      missionBlurb.textContent = site.blurb || "";
-      missionSheet.hidden = false;
-    }
-
-    function setSitesUI(mode) {
-      sitesMode = mode;
-      sitesBtn.setAttribute("aria-pressed", mode === "off" ? "false" : "true");
-      sitesBtn.dataset.mode = mode;
-      if (mode === "famous") {
-        sitesBtn.textContent = "Large";
-        sitesBtn.title = "Larger active regions — tap for every region";
-      } else if (mode === "all") {
-        sitesBtn.textContent = "All";
-        sitesBtn.title = "All active regions — tap to hide";
-      } else {
-        sitesBtn.textContent = "Regions";
-        sitesBtn.title = "Show active regions: large, then all";
-        closeMissionSheet();
-      }
-    }
-
-    sitesBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      const next =
-        sitesMode === "off" ? "famous" : sitesMode === "famous" ? "all" : "off";
-      globe.setMissionsMode(next);
-      setSitesUI(next);
-    });
-
-    missionClose.addEventListener("click", (e) => {
-      e.preventDefault();
-      closeMissionSheet();
-    });
-    missionSheet.addEventListener("click", (e) => {
-      if (e.target === missionSheet) closeMissionSheet();
-    });
 
     // Block copy / select (showcase PWA); inputs still selectable via CSS
     for (const evt of ["copy", "cut", "selectstart"]) {
@@ -2171,10 +1969,6 @@
         closeFactSheet();
         return;
       }
-      if (!missionSheet.hidden) {
-        closeMissionSheet();
-        return;
-      }
       if (!locDialog.hidden) {
         closeLocationDialog();
         return;
@@ -2184,24 +1978,18 @@
         globe.setOrbiting(false);
         setOrbitUI(false);
       }
-      if (globe.getMissionsMode() !== "off") {
-        globe.setMissionsMode("off");
-        setSitesUI("off");
-      }
     });
 
     const globe = createSunGlobe(canvas, {
       onReady() {
         canvas.classList.add("is-ready");
         status.textContent = status.dataset.build || "s1";
-        updateRegions();
         updateSpaceWeather(true);
       },
       onQuality() {
         /* quality upgrades stay silent */
       },
       onPhase: showPhase,
-      onMissionTap: openMissionSheet,
     });
 
 
