@@ -1,42 +1,201 @@
-name: Bake Sun
+# Daily AIA 171 surface bake. GitHub runners run `python3 scripts/build-171.py --sdo`.
+# Vercel deploys from main when sun-2k.jpg / cache-bust queries change.
+#
+# Kickoff ~9:47 America/New_York (after 12:00 UTC SDO; staggered after
+# GlobalFlows 8:47, Heat 9:17, Orbital View 9:23). Odd minute to reduce
+# Actions :00/:30 queue delay. timezone keeps ET through DST. Actions
+# cron can still drift; workflow_dispatch remains for manual / dry_run.
+#
+# Email (optional): repo Actions secrets —
+#   BAKE_NOTIFY_TO   your inbox
+#   BAKE_SMTP_HOST   e.g. smtp.gmail.com
+#   BAKE_SMTP_PORT   587
+#   BAKE_SMTP_USER   SMTP login (usually the Gmail address)
+#   BAKE_SMTP_PASS   app password (not the normal Gmail password)
+# Without mail secrets the bake still ships; before/after is always in the job summary.
+name: Surface bake
 
 on:
   schedule:
-    # After the 12:00 UTC SDO frame is up.
-    - cron: "30 13 * * *"
+    - cron: "47 9 * * *"
+      timezone: "America/New_York"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Bake without committing or pushing"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: supersun-surface
+  cancel-in-progress: false
+
 jobs:
   bake:
+    name: Bake Sun surface
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      TZ: America/New_York
+      GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      BAKE_NOTIFY_TO: ${{ secrets.BAKE_NOTIFY_TO }}
+      BAKE_SMTP_HOST: ${{ secrets.BAKE_SMTP_HOST }}
+      BAKE_SMTP_PORT: ${{ secrets.BAKE_SMTP_PORT }}
+      BAKE_SMTP_USER: ${{ secrets.BAKE_SMTP_USER }}
+      BAKE_SMTP_PASS: ${{ secrets.BAKE_SMTP_PASS }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - uses: actions/cache@v4
+      - name: Restore SDO frame cache
+        uses: actions/cache@v4
         with:
           path: .sun-cache
           key: sun-frames-${{ github.run_id }}
-          restore-keys: sun-frames-
+          restore-keys: |
+            sun-frames-
 
-      - run: pip install pillow numpy
+      - name: Install dependencies
+        run: pip install pillow numpy
 
-      - run: python3 scripts/build-171.py --sdo
-
-      - name: Commit the new surface
+      - name: Snapshot before
         run: |
+          set -euo pipefail
+          python3 scripts/bump-version.py --check > /tmp/sun-before-v.txt
+          wc -c < sun-2k.jpg | tr -d ' ' > /tmp/sun-before-bytes.txt
+
+      - name: Bake AIA 171 surface
+        id: bake
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-bake.log; then
+            echo "Bake succeeded."
+          else
+            echo "Bake exited non-zero. Retrying once..."
+            python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-bake.log
+          fi
+
+      - name: Write before/after report
+        id: report
+        if: always()
+        run: |
+          set -euo pipefail
+          before_v="$(cat /tmp/sun-before-v.txt 2>/dev/null || echo unknown)"
+          before_b="$(cat /tmp/sun-before-bytes.txt 2>/dev/null || echo 0)"
+          if [ -f sun-2k.jpg ]; then
+            after_b="$(wc -c < sun-2k.jpg | tr -d ' ')"
+          else
+            after_b=0
+          fi
+          after_v="$(python3 scripts/bump-version.py --check 2>/dev/null || echo unknown)"
+          covered="$(grep -E '^covered ' /tmp/sun-bake.log 2>/dev/null | tail -1 || true)"
+          wrote="$(grep -E '^wrote ' /tmp/sun-bake.log 2>/dev/null | tail -1 || true)"
+          {
+            if [ "${{ steps.bake.outcome }}" != "success" ]; then
+              echo "SuperSun surface bake · FAIL"
+              echo
+              echo "Bake failed (download, coverage, poles, or file size). Yesterday's picture stays."
+            else
+              echo "SuperSun surface bake · SUCCESS"
+              echo
+            fi
+            echo "version ${before_v} → ${after_v}"
+            echo "sun-2k.jpg ${before_b} → ${after_b} bytes"
+            [ -n "${covered}" ] && echo "${covered}"
+            [ -n "${wrote}" ] && echo "${wrote}"
+            echo
+            echo "Run: ${GITHUB_RUN_URL}"
+          } | tee /tmp/bake-report.txt
+          {
+            echo '```'
+            cat /tmp/bake-report.txt
+            echo '```'
+          } > /tmp/bake-report.md
+          cat /tmp/bake-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require bake
+        id: gate
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.bake.outcome }}" != "success" ]; then
+            echo "::error::Sun surface bake failed."
+            exit 1
+          fi
+          echo "Bake succeeded."
+
+      - name: Commit and push surface files
+        id: commit
+        if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
+        run: |
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add sun-2k.jpg index.html sun.js
+
+          files=(
+            sun-2k.jpg
+            surface.json
+            index.html
+            sun.js
+          )
+
+          git add -- "${files[@]}"
+
           if git diff --cached --quiet; then
-            echo "surface unchanged"
+            echo "No surface file changes — nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git commit -m "Bake today's Sun surface."
+
+          extra="$(git diff --cached --name-only | grep -v \
+            -e '^sun-2k.jpg$' \
+            -e '^surface.json$' \
+            -e '^index.html$' \
+            -e '^sun.js$' \
+            || true)"
+          if [ -n "${extra}" ]; then
+            echo "::error::Refusing to commit unexpected staged files:"
+            echo "${extra}"
+            exit 1
+          fi
+
+          date_label="$(LC_TIME=C date '+%-d %b %Y')"
+          git commit -m "Refresh SuperSun surface bake for ${date_label}."
           git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dry run — skip commit
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: echo "Dry run — bake finished; no commit or push."
+
+      - name: Mail before/after report
+        if: ${{ always() && steps.report.outcome == 'success' && env.BAKE_NOTIFY_TO != '' && env.BAKE_SMTP_HOST != '' && env.BAKE_SMTP_USER != '' && env.BAKE_SMTP_PASS != '' }}
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: ${{ env.BAKE_SMTP_HOST }}
+          server_port: ${{ env.BAKE_SMTP_PORT != '' && env.BAKE_SMTP_PORT || 587 }}
+          secure: false
+          username: ${{ env.BAKE_SMTP_USER }}
+          password: ${{ env.BAKE_SMTP_PASS }}
+          subject: ${{ steps.gate.outcome == 'success' && 'SuperSun surface bake · SUCCESS' || 'SuperSun surface bake · FAIL' }}
+          to: ${{ env.BAKE_NOTIFY_TO }}
+          from: SuperSun bake <${{ env.BAKE_SMTP_USER }}>
+          body: file:///tmp/bake-report.txt
+          html_body: file:///tmp/bake-report.md
+
+      - name: Note when mail secrets are missing
+        if: ${{ always() && (env.BAKE_NOTIFY_TO == '' || env.BAKE_SMTP_HOST == '' || env.BAKE_SMTP_USER == '' || env.BAKE_SMTP_PASS == '') }}
+        run: |
+          echo "Mail skipped — add BAKE_NOTIFY_TO, BAKE_SMTP_HOST, BAKE_SMTP_PORT (587), BAKE_SMTP_USER, BAKE_SMTP_PASS under Settings → Secrets → Actions. Report is in the job summary."

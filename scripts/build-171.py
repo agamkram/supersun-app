@@ -210,12 +210,20 @@ def fetch_sdo() -> list[tuple[datetime, Path]]:
             print("  download", date, flush=True)
             req = urllib.request.Request(url, headers={"User-Agent": "supersun-app"})
             part = dest.with_suffix(".part")
-            try:
-                with urllib.request.urlopen(req, timeout=90) as res:
-                    part.write_bytes(res.read())
-            except Exception as exc:
-                part.unlink(missing_ok=True)
-                raise SystemExit(f"download failed for {date}: {exc}") from exc
+            last_exc = None
+            for attempt in range(2):
+                try:
+                    with urllib.request.urlopen(req, timeout=90) as res:
+                        part.write_bytes(res.read())
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    part.unlink(missing_ok=True)
+                    if attempt == 0:
+                        print("  retry", date, flush=True)
+            if last_exc:
+                raise SystemExit(f"download failed for {date}: {last_exc}") from last_exc
             if part.stat().st_size < 100000:
                 part.unlink(missing_ok=True)
                 raise SystemExit(f"download too small for {date}")
@@ -254,6 +262,9 @@ def main() -> None:
         part.unlink(missing_ok=True)
         raise SystemExit("surface file is too small, keeping the current sun")
     part.replace(OUT)
+    meta = json.loads(META.read_text())
+    meta["built"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    META.write_text(json.dumps(meta, indent=2) + "\n")
     print("wrote", OUT, OUT.stat().st_size, flush=True)
     subprocess.check_call([sys.executable, str(ROOT / "scripts" / "bump-version.py")])
 
