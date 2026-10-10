@@ -208,7 +208,7 @@ export function createSunGlobe(canvas, options = {}) {
     onReady = null,
     onQuality = null,
     onPhase = null,
-    onTap = null = null,
+    onTap = null,
   } = options;
   const surface =
     (typeof document !== "undefined" && document.getElementById("touch-plane")) ||
@@ -838,7 +838,7 @@ export function createSunGlobe(canvas, options = {}) {
       el &&
       el.closest &&
       el.closest(
-        "input,button,select,textarea,a,label,#loc-dialog,.leaflet-container,.loc-dialog,#fact-sheet,.cycle,.slider-track,.cycle-controls"
+        "input,button,select,textarea,a,label,#fact-sheet,.cycle,.slider-track,.cycle-controls"
       )
     );
   }
