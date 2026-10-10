@@ -7,20 +7,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="SuperSun" />
-  <meta name="description" content="Hi-res 3D Sun you can orbit, with live activity for your location." />
+  <meta name="description" content="Hi-res 3D Sun you can orbit, with live space weather and sky times for your place." />
   <!-- social-share meta (tier-a) -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Mark Maga" />
-  <meta property="og:title" content="SuperSun — 3D Sun with live activity for your place" />
-  <meta property="og:description" content="Hi-res 3D Sun you can orbit, with live activity for your location." />
+  <meta property="og:title" content="SuperSun — 3D Sun with live space weather for your place" />
+  <meta property="og:description" content="Hi-res 3D Sun you can orbit, with live space weather and sky times for your place." />
   <meta property="og:url" content="https://supersun.markmaga.com/" />
   <link rel="canonical" href="https://supersun.markmaga.com/" />
   <meta property="og:image" content="https://supersun.markmaga.com/icon-512.png" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="SuperSun — 3D Sun with live activity for your place" />
-  <meta name="twitter:description" content="Hi-res 3D Sun you can orbit, with live activity for your location." />
+  <meta name="twitter:title" content="SuperSun — 3D Sun with live space weather for your place" />
+  <meta name="twitter:description" content="Hi-res 3D Sun you can orbit, with live space weather and sky times for your place." />
   <meta name="twitter:image" content="https://supersun.markmaga.com/icon-512.png" />
-  <title>SuperSun — 3D Sun with live activity for your place | Mark Maga</title>
+  <title>SuperSun — 3D Sun with live space weather for your place | Mark Maga</title>
   <script>
     /* iOS A2HS: lock fill height before first paint.
        Phone: screen.height > inner → use screen.
@@ -529,15 +529,9 @@
       }
 
       .loc-place-row button,
-      .geo-btn,
-      .hemi button {
+      .geo-btn {
         font-size: 10px;
         min-height: 1.2rem;
-      }
-
-      .hemi {
-        min-height: 1.2rem;
-        height: 1.2rem;
       }
 
       .cycle-date {
@@ -671,8 +665,7 @@
       box-sizing: border-box;
     }
 
-    .loc-card-place,
-    .loc-card.hemi-card {
+    .loc-card-place {
       flex-direction: column;
       align-items: stretch;
       justify-content: space-between;
@@ -680,12 +673,7 @@
       padding: 0.12rem 0.35rem;
     }
 
-    .loc-card.hemi-card {
-      box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.05);
-    }
-
-    .loc-label,
-    .hemi-label {
+    .loc-label {
       font-size: var(--label-size);
       font-weight: 600;
       letter-spacing: 0.03em;
@@ -695,10 +683,6 @@
       text-align: left;
       margin: 0;
       flex: 0 0 auto;
-    }
-
-    .hemi-label {
-      text-align: center;
     }
 
     .loc-place-row {
@@ -751,26 +735,7 @@
       stroke-linejoin: round;
     }
 
-    .hemi {
-      display: flex;
-      gap: 2px;
-      flex: 0 0 auto;
-      width: 100%;
-      min-height: 1.15rem;
-      height: 1.15rem;
-      align-items: stretch;
-    }
 
-    .hemi button {
-      flex: 1 1 0;
-      min-width: 0;
-      min-height: 0;
-      height: 100%;
-      padding: 0 0.15rem;
-      font-size: 8px;
-      letter-spacing: 0.02em;
-      line-height: 1.1;
-    }
 
     .loc-card button {
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -788,25 +753,9 @@
       white-space: nowrap;
     }
 
-    .hemi button {
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 5px;
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      font-family: var(--font);
-      font-weight: 600;
-      text-transform: uppercase;
-      cursor: pointer;
-      line-height: 1.05;
-      white-space: nowrap;
-    }
 
-    .hemi button.active {
-      background: rgba(255, 255, 255, 0.14);
-      border-color: rgba(255, 255, 255, 0.28);
-    }
 
-    /* Hidden lat/lon still updated for hemi flip / storage */
+    /* Hidden lat/lon for applyLocation / storage */
     .sr-only {
       position: absolute;
       width: 1px;
@@ -1309,7 +1258,6 @@
 
     body.is-red-mode .live-btn,
     body.is-red-mode .loc-card button,
-    body.is-red-mode .hemi button,
     body.is-red-mode .edit-panel button,
     body.is-red-mode .edit-panel input {
       background: rgba(40, 4, 4, 0.55);
@@ -1318,7 +1266,6 @@
       accent-color: #6a1010;
     }
 
-    body.is-red-mode .hemi button.active,
     body.is-red-mode .live-btn.is-preview {
       background: rgba(70, 10, 10, 0.55);
       border-color: #551010;

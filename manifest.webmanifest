@@ -1,7 +1,7 @@
 {
   "name": "SuperSun",
   "short_name": "SuperSun",
-  "description": "A hi-res 3D Sun you can rotate, zoom, and explore.",
+  "description": "Hi-res 3D Sun you can orbit, with live space weather and sky times for your place.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020308",
