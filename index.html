@@ -267,13 +267,14 @@
       pointer-events: none;
     }
 
-    /* Flare class needs a little more width than Kp / wind / flux */
+    /* Space weather: X-ray + R·S·G a touch wider */
     .m-grid-3 {
       grid-template-columns:
-        minmax(0, 1.7fr)
-        minmax(3.6rem, 0.38fr)
-        minmax(3.6rem, 0.38fr)
-        minmax(3.6rem, 0.38fr);
+        minmax(0, 1.15fr)
+        minmax(0, 1.35fr)
+        minmax(0, 0.85fr)
+        minmax(0, 1.1fr)
+        minmax(0, 1fr);
       grid-auto-rows: var(--m-row-h);
       gap: 0;
     }
@@ -301,7 +302,8 @@
       pointer-events: auto;
     }
 
-    #m-flare {
+    #m-xray,
+    #m-scales {
       font-size: 11px;
       line-height: 1.1;
       letter-spacing: -0.02em;
@@ -468,10 +470,11 @@
 
       .m-grid-3 {
         grid-template-columns:
-          minmax(0, 1.7fr)
-          minmax(4.1rem, 0.38fr)
-          minmax(4.1rem, 0.38fr)
-          minmax(4.1rem, 0.38fr);
+          minmax(0, 1.15fr)
+          minmax(0, 1.35fr)
+          minmax(0, 0.85fr)
+          minmax(0, 1.1fr)
+          minmax(0, 1fr);
       }
 
       .m-cell .k {
@@ -484,8 +487,9 @@
         font-size: 13px;
       }
 
-      #m-flare {
-        font-size: 12px;
+      #m-xray,
+      #m-scales {
+        font-size: 11px;
       }
 
       .m-grid-rise {
@@ -1499,9 +1503,13 @@
         </div>
       </div>
       <div class="m-grid m-grid-3" aria-label="Space weather">
-        <button type="button" class="m-cell m-cell-fact" data-fact="flare" title="Tap for explanation">
-          <div class="k">Flare</div>
-          <div class="v sm" id="m-flare">—</div>
+        <button type="button" class="m-cell m-cell-fact" data-fact="xray" title="Tap for explanation">
+          <div class="k">X-ray</div>
+          <div class="v sm" id="m-xray">—</div>
+        </button>
+        <button type="button" class="m-cell m-cell-fact" data-fact="scales" title="Tap for explanation">
+          <div class="k">R·S·G</div>
+          <div class="v sm" id="m-scales">—</div>
         </button>
         <button type="button" class="m-cell m-cell-fact" data-fact="kp" title="Tap for explanation">
           <div class="k">Kp</div>
@@ -1511,9 +1519,9 @@
           <div class="k">Solar wind</div>
           <div class="v sm" id="m-wind">—</div>
         </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="flux" title="Tap for explanation">
-          <div class="k">10.7 cm</div>
-          <div class="v sm" id="m-flux">—</div>
+        <button type="button" class="m-cell m-cell-fact" data-fact="protons" title="Tap for explanation">
+          <div class="k">Protons</div>
+          <div class="v sm" id="m-protons">—</div>
         </button>
       </div>
 
@@ -1654,10 +1662,11 @@
       ang: document.getElementById("m-ang"),
       vsavg: document.getElementById("m-vsavg"),
       vsmax: document.getElementById("m-vsmax"),
-      flare: document.getElementById("m-flare"),
+      xray: document.getElementById("m-xray"),
+      scales: document.getElementById("m-scales"),
       kp: document.getElementById("m-kp"),
       wind: document.getElementById("m-wind"),
-      flux: document.getElementById("m-flux"),
+      protons: document.getElementById("m-protons"),
       rise: document.getElementById("m-rise"),
       high: document.getElementById("m-high"),
       set: document.getElementById("m-set"),
@@ -1731,11 +1740,17 @@
           "Local time when the Sun sets below your horizon.\n\n" +
           "Uses your chosen location.",
       },
-      flare: {
-        title: "Flare",
+      xray: {
+        title: "X-ray",
         body:
-          "The current solar X-ray class from the GOES satellite, via NOAA.\n\n" +
+          "The current solar X-ray class from GOES, via NOAA.\n\n" +
           "A, B, and C are common. M and X are strong flares. The letter is the size; the number is the strength inside that class.",
+      },
+      scales: {
+        title: "R·S·G",
+        body:
+          "NOAA space-weather scales right now.\n\n" +
+          "R is radio blackout (from X-rays). S is solar radiation storm (from protons). G is geomagnetic storm (from the solar wind and Earth’s magnetic field). 0 is quiet. 5 is extreme.",
       },
       kp: {
         title: "Kp",
@@ -1749,11 +1764,11 @@
           "Speed of the solar wind at Earth, in kilometers per second.\n\n" +
           "A typical speed is around 400. Faster wind often means a more disturbed magnetic field.",
       },
-      flux: {
-        title: "10.7 cm",
+      protons: {
+        title: "Protons",
         body:
-          "The solar radio flux at 10.7 centimeters, in solar flux units.\n\n" +
-          "It tracks the general level of solar activity and is updated through the day.",
+          "GOES integral proton flux above 10 MeV, in particles per cm²·s·sr (pfu).\n\n" +
+          "Quiet levels are well under 1. The S-scale radiation storm starts near 10. This is what can affect satellites and polar flights.",
       },
     };
 
@@ -1964,18 +1979,44 @@
       };
     }
 
-    let weather = { flare: "—", kp: "—", wind: "—", flux: "—" };
+    let weather = { xray: "—", scales: "—", kp: "—", wind: "—", protons: "—" };
     let weatherAt = 0;
 
     function paintWeather() {
-      el.flare.textContent = weather.flare;
+      el.xray.textContent = weather.xray;
+      el.scales.textContent = weather.scales;
       el.kp.textContent = weather.kp;
       el.wind.textContent = weather.wind;
-      el.flux.textContent = weather.flux;
+      el.protons.textContent = weather.protons;
     }
 
     function lastRow(data) {
       return Array.isArray(data) && data.length ? data[data.length - 1] : null;
+    }
+
+    function scaleDigit(block) {
+      if (!block || block.Scale == null || block.Scale === "") return "0";
+      const n = Number(block.Scale);
+      return Number.isFinite(n) ? String(Math.max(0, Math.min(5, Math.round(n)))) : "0";
+    }
+
+    function formatProtonPfu(flux) {
+      const n = Number(flux);
+      if (!Number.isFinite(n) || n < 0) return "—";
+      if (n >= 1000) return n.toExponential(1).replace("e+", "e");
+      if (n >= 10) return String(Math.round(n));
+      if (n >= 1) return n.toFixed(1);
+      if (n >= 0.1) return n.toFixed(2);
+      return n.toFixed(3);
+    }
+
+    function latestProton10(rows) {
+      if (!Array.isArray(rows)) return null;
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const r = rows[i];
+        if (r && r.energy === ">=10 MeV" && Number.isFinite(Number(r.flux))) return r;
+      }
+      return null;
     }
 
     async function updateSpaceWeather(force) {
@@ -1985,20 +2026,25 @@
       }
       weatherAt = Date.now();
       try {
-        const [flare, kp, wind, flux] = await Promise.all([
+        const [flare, scales, kp, wind, protons] = await Promise.all([
           fetch("https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json").then((r) => r.json()),
+          fetch("https://services.swpc.noaa.gov/products/noaa-scales.json").then((r) => r.json()),
           fetch("https://services.swpc.noaa.gov/json/planetary_k_index_1m.json").then((r) => r.json()),
           fetch("https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json").then((r) => r.json()),
-          fetch("https://services.swpc.noaa.gov/products/summary/10cm-flux.json").then((r) => r.json()),
+          fetch("https://services.swpc.noaa.gov/json/goes/primary/integral-protons-6-hour.json").then((r) => r.json()),
         ]);
         const f = lastRow(flare) || flare;
+        const nowScale = scales && typeof scales === "object" ? scales["0"] : null;
         const k = lastRow(kp);
         const w = lastRow(wind);
-        const x = lastRow(flux);
-        if (f && f.current_class) weather.flare = String(f.current_class);
+        const p = latestProton10(protons);
+        if (f && f.current_class) weather.xray = String(f.current_class);
+        if (nowScale) {
+          weather.scales = `R${scaleDigit(nowScale.R)} S${scaleDigit(nowScale.S)} G${scaleDigit(nowScale.G)}`;
+        }
         if (k && Number.isFinite(Number(k.estimated_kp))) weather.kp = Number(k.estimated_kp).toFixed(2);
         if (w && Number.isFinite(Number(w.proton_speed))) weather.wind = `${Math.round(w.proton_speed)} km/s`;
-        if (x && Number.isFinite(Number(x.flux))) weather.flux = String(Math.round(x.flux));
+        if (p) weather.protons = formatProtonPfu(p.flux);
       } catch (_) {}
       paintWeather();
     }
