@@ -614,7 +614,7 @@
         max(0.75rem, env(safe-area-inset-right))
         max(0.75rem, env(safe-area-inset-bottom))
         max(0.75rem, env(safe-area-inset-left));
-      background: rgba(0, 0, 0, 0.62);
+      background: transparent;
       pointer-events: auto;
       touch-action: manipulation;
     }
@@ -644,54 +644,61 @@
     .fact-sheet-inner {
       position: relative;
       z-index: 1;
-      width: min(360px, 100%);
-      padding: 16px 16px 14px;
+      width: min(320px, 100%);
+      padding: 12px 40px 12px 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
-      background: #0c1018;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+      background: transparent;
+      box-shadow: none;
       pointer-events: auto;
     }
 
     .fact-sheet-inner h2 {
       font-family: var(--font);
-      font-size: 1.05rem;
+      font-size: 0.92rem;
       font-weight: 600;
       letter-spacing: 0.02em;
-      margin: 0 0 10px;
+      margin: 0 0 6px;
+      padding-right: 4px;
       color: var(--text);
+      text-shadow: 0 1px 8px #000;
     }
 
     .fact-sheet-inner p {
-      font-size: 13px;
-      line-height: 1.45;
-      color: var(--dim);
-      margin: 0 0 12px;
-      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--text);
+      margin: 0;
+      white-space: normal;
+      text-shadow: 0 1px 8px #000;
     }
 
     .fact-sheet-close {
-      margin-top: 4px;
-      width: 100%;
-      border: 1px solid var(--line);
-      background: var(--cell);
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 36px;
+      height: 36px;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
       color: var(--text);
-      font: inherit;
-      font-weight: 600;
-      padding: 9px;
-      border-radius: 7px;
+      font: 22px/1 var(--font);
       cursor: pointer;
       touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
 
     body.is-red-mode .fact-sheet-inner {
-      background: #0a0000;
+      background: transparent;
       border-color: #3a0c0c;
     }
 
     body.is-red-mode .fact-sheet-close {
-      background: rgba(40, 4, 4, 0.55);
-      border-color: #3a0c0c;
+      background: transparent;
+      color: var(--text);
     }
 
 
@@ -1086,9 +1093,9 @@
   <div id="fact-sheet" class="fact-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="fact-title">
     <button type="button" class="fact-sheet-scrim" id="fact-scrim" aria-label="Dismiss explanation"></button>
     <div class="fact-sheet-inner">
+      <button type="button" class="fact-sheet-close" id="fact-close" aria-label="Close">×</button>
       <h2 id="fact-title">—</h2>
       <p id="fact-body">—</p>
-      <button type="button" class="fact-sheet-close" id="fact-close">Close</button>
     </div>
   </div>
 
@@ -1128,79 +1135,55 @@
     const FACTS = {
       alt: {
         title: "Altitude",
-        body:
-          "How high the Sun is above your horizon right now, in degrees.\n\n" +
-          "0° is on the horizon. 90° is overhead. A negative number means the Sun is still below the horizon.",
+        body: "Height above the horizon. 0° is the rim, 90° overhead; negative is still down.",
       },
       az: {
         title: "Azimuth",
-        body:
-          "The compass direction of the Sun, in degrees.\n\n" +
-          "0° is north, 90° east, 180° south, 270° west. It uses your local sky position.",
+        body: "Compass bearing. 0° north, 90° east, 180° south, 270° west.",
       },
       cycle: {
         title: "Carrington",
-        body:
-          "Days into the current Carrington rotation, out of about 27.3 days.\n\n" +
-          "That is one full turn of the Sun as seen from Earth. The slider runs across this rotation. Live sits on today.",
+        body: "Days into this ~27.3-day turn as seen from Earth. The slider walks it; Live is today.",
       },
       size: {
         title: "Dist · size",
-        body:
-          "Earth–Sun distance in astronomical units, and how wide the Sun appears in arcminutes.\n\n" +
-          "1 AU is the average distance. Apparent size tracks distance — a little larger in January, a little smaller in July.",
+        body: "Earth–Sun distance in AU, and apparent width in arcminutes. A bit larger in January.",
       },
       rise: {
         title: "Sunrise",
-        body:
-          "Local time when the Sun rises above your horizon.",
+        body: "When the Sun clears the horizon.",
       },
       high: {
         title: "Solar noon",
-        body:
-          "Local time when the Sun is highest in your sky.\n\n" +
-          "That is solar noon, which is not always 12:00 on the clock.",
+        body: "When the Sun is highest — solar noon, not always 12:00 on the clock.",
       },
       set: {
         title: "Sunset",
-        body:
-          "Local time when the Sun sets below your horizon.",
+        body: "When the Sun drops below the horizon.",
       },
       daylen: {
         title: "Day length",
-        body:
-          "Hours from sunrise to sunset in your local sky.\n\n" +
-          "Longer in summer, shorter in winter. Near the poles it can stay up or down all day.",
+        body: "Hours from sunrise to sunset. Longer in summer, shorter in winter.",
       },
       xray: {
         title: "X-ray",
-        body:
-          "The current solar X-ray class from GOES, via NOAA.\n\n" +
-          "A, B, and C are common. M and X are strong flares. The letter is the size; the number is the strength inside that class.",
+        body: "GOES X-ray class. A–C are common; M and X are strong flares.",
       },
       scales: {
         title: "R·S·G",
-        body:
-          "NOAA space-weather scales right now.\n\n" +
-          "R is radio blackout (from X-rays). S is solar radiation storm (from protons). G is geomagnetic storm (from the solar wind and Earth’s magnetic field). 0 is quiet. 5 is extreme.",
+        body: "NOAA R radio, S radiation, G geomagnetic. 0 quiet, 5 extreme.",
       },
       kp: {
         title: "Kp",
-        body:
-          "The estimated planetary K index, a measure of geomagnetic activity.\n\n" +
-          "0 to 2 is quiet. 5 and above is a geomagnetic storm. NOAA updates this about once a minute.",
+        body: "Planetary K index. 0–2 quiet; 5+ is a geomagnetic storm.",
       },
       wind: {
         title: "Solar wind",
-        body:
-          "Speed of the solar wind at Earth, in kilometers per second.\n\n" +
-          "A typical speed is around 400. Faster wind often means a more disturbed magnetic field.",
+        body: "Speed at Earth, km/s. Typical ~400; faster often means a more disturbed field.",
       },
       protons: {
         title: "Protons",
-        body:
-          "GOES integral proton flux above 10 MeV, in particles per cm²·s·sr (pfu).\n\n" +
-          "Quiet levels are well under 1. The S-scale radiation storm starts near 10. This is what can affect satellites and polar flights.",
+        body: "GOES >10 MeV flux. Quiet is well under 1; the S-scale storm starts near 10.",
       },
     };
 
@@ -1214,11 +1197,7 @@
       const f = FACTS[key];
       if (!f || !factSheet) return;
       factTitle.textContent = f.title;
-      const shown = (el[key]?.textContent || "").trim();
-      factBody.textContent =
-        shown && shown !== "—"
-          ? `Right now this box shows “${shown}”.\n\n${f.body}`
-          : f.body;
+      factBody.textContent = f.body;
       factSheet.hidden = false;
     }
 
