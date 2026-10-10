@@ -977,7 +977,7 @@
     <h1 class="app-title">SuperSun</h1>
   </header>
 
-  <p class="status" id="status" data-state="loading" data-build="s13">Loading surface…</p>
+  <p class="status" id="status" data-state="loading">Loading surface…</p>
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
@@ -1597,7 +1597,8 @@
     const globe = createSunGlobe(canvas, {
       onReady() {
         canvas.classList.add("is-ready");
-        status.textContent = status.dataset.build || "s1";
+        status.textContent = "";
+        status.style.display = "none";
         updateSpaceWeather(true);
       },
       onQuality() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump the visible SuperSun build marker. JS and the surface image share it."""
+"""Bump cache-bust queries on sun.js and the surface JPEG. No on-page build badge."""
 from __future__ import annotations
 
 import re
@@ -13,23 +13,22 @@ SUN = ROOT / "sun.js"
 
 def current() -> int:
     text = INDEX.read_text()
-    m = re.search(r'data-build="s(\d+)"', text)
+    m = re.search(r"\./sun\.js\?v=(\d+)", text)
     if not m:
-        raise SystemExit("no data-build marker in index.html")
+        raise SystemExit("no sun.js?v= marker in index.html")
     return int(m.group(1))
 
 
 def write(n: int) -> None:
     index = INDEX.read_text()
-    index2, c1 = re.subn(r'data-build="s\d+"', f'data-build="s{n}"', index)
-    index2, c2 = re.subn(r"\./sun\.js\?v=\d+", f"./sun.js?v={n}", index2)
-    if c1 < 1 or c2 != 1:
-        raise SystemExit(f"index replacements build={c1} script={c2}")
+    index2, c1 = re.subn(r"\./sun\.js\?v=\d+", f"./sun.js?v={n}", index)
+    if c1 != 1:
+        raise SystemExit(f"index script query count {c1}")
     INDEX.write_text(index2)
     sun = SUN.read_text()
-    sun2, c3 = re.subn(r"sun-2k\.jpg\?v=\d+", f"sun-2k.jpg?v={n}", sun)
-    if c3 != 1:
-        raise SystemExit(f"sun.js texture query count {c3}")
+    sun2, c2 = re.subn(r"sun-2k\.jpg\?v=\d+", f"sun-2k.jpg?v={n}", sun)
+    if c2 != 1:
+        raise SystemExit(f"sun.js texture query count {c2}")
     SUN.write_text(sun2)
 
 
@@ -39,13 +38,11 @@ def main() -> None:
         sun = SUN.read_text()
         index = INDEX.read_text()
         if f"./sun.js?v={n}" not in index or f"sun-2k.jpg?v={n}" not in sun:
-            raise SystemExit(f"s{n} is not consistent")
-        if index.count(f'data-build="s{n}"') < 1:
-            raise SystemExit("marker missing")
-        print(f"s{n}")
+            raise SystemExit(f"v{n} is not consistent")
+        print(f"v{n}")
         return
     write(n + 1)
-    print(f"s{n + 1}")
+    print(f"v{n + 1}")
 
 
 if __name__ == "__main__":
