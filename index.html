@@ -1155,7 +1155,7 @@
       },
       dist: {
         title: "Distance",
-        body: "Earth–Sun distance in AU. 1 AU is the average; a bit closer in January.",
+        body: "Earth–Sun distance in miles and km. One Astronomical Unit is the average.",
       },
       size: {
         title: "Size",
@@ -1191,7 +1191,7 @@
       },
       wind: {
         title: "Solar wind",
-        body: "Speed at Earth, km/s. Typical ~400; faster often means a more disturbed field.",
+        body: "Speed at Earth in mph and km/s. Typical is about 900,000 mph (400 km/s).",
       },
       protons: {
         title: "Protons",
@@ -1209,7 +1209,7 @@
       const f = FACTS[key];
       if (!f || !factSheet) return;
       factTitle.textContent = f.title;
-      factBody.textContent = f.body;
+      factBody.textContent = factText(key, f.body);
       factSheet.hidden = false;
     }
 
@@ -1370,6 +1370,24 @@
       };
     }
 
+    let lastDistAu = NaN;
+    let windKms = NaN;
+    const KM_PER_AU = 149597870.7;
+    const KMS_TO_MPH = 3600 / 1.609344;
+
+    function factText(key, fallback) {
+      if (key === "dist" && Number.isFinite(lastDistAu)) {
+        const km = lastDistAu * KM_PER_AU;
+        const mi = km * MI_PER_KM;
+        return `${(mi / 1e6).toFixed(1)} million miles, ${(km / 1e6).toFixed(1)} million km. ${lastDistAu.toFixed(3)} Astronomical Units.`;
+      }
+      if (key === "wind" && Number.isFinite(windKms)) {
+        const mph = Math.round(windKms * KMS_TO_MPH);
+        return `${mph.toLocaleString("en-US")} mph (${Math.round(windKms)} km/s). Typical is about 900,000 mph (400 km/s).`;
+      }
+      return fallback;
+    }
+
     let weather = { xray: "—", scales: "—", kp: "—", wind: "—", protons: "—" };
     let weatherAt = 0;
 
@@ -1434,7 +1452,11 @@
           weather.scales = `R${scaleDigit(nowScale.R)} S${scaleDigit(nowScale.S)} G${scaleDigit(nowScale.G)}`;
         }
         if (k && Number.isFinite(Number(k.estimated_kp))) weather.kp = Number(k.estimated_kp).toFixed(2);
-        if (w && Number.isFinite(Number(w.proton_speed))) weather.wind = `${Math.round(w.proton_speed)} km/s`;
+        if (w && Number.isFinite(Number(w.proton_speed))) {
+          windKms = Number(w.proton_speed);
+          const mph = windKms * KMS_TO_MPH;
+          weather.wind = `${(mph / 1e6).toFixed(2)}M mph`;
+        }
         if (p) weather.protons = formatProtonPfu(p.flux);
       } catch (_) {}
       paintWeather();
@@ -1448,6 +1470,7 @@
       el.alt.textContent = Number.isFinite(m.alt) ? `${Math.round(m.alt)}°` : "—";
       el.az.textContent = Number.isFinite(m.az) ? `${Math.round(m.az)}°` : "—";
       el.cycle.textContent = `${m.cycleDay.toFixed(1)}/${ROTATION_DAYS.toFixed(1)}`;
+      lastDistAu = m.distAu;
       el.dist.textContent = Number.isFinite(m.distAu) ? `${m.distAu.toFixed(3)} AU` : "—";
       el.size.textContent = Number.isFinite(m.ang) ? `${m.ang.toFixed(1)}′` : "—";
       el.rise.textContent = fmtTime(m.rise);
