@@ -116,18 +116,18 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=16", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=17", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
 
 /**
- * Corona. Same limb shell as Mars and Earth.
- * BackSide; fades into space. The Sun has no night side, so the rim glows all around.
+ * Corona as a flickering flame shell.
+ * BackSide; irregular tongues all around — the Sun has no night side.
  */
-const ATMO_HEIGHT = 1.07;
+const ATMO_HEIGHT = 1.14;
 const ATMO_FADE = 0.75;
-const ATMO_INTENSITY = 0.6;
+const ATMO_INTENSITY = 0.72;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
 const ATMO_VERTEX = /* glsl */ `
@@ -153,30 +153,65 @@ float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p);
+  return v;
+}
+
 void main() {
   vec3 rd = normalize(vWorldPos - cameraPosition);
   vec3 oc = cameraPosition - uPlanetCenter;
-  float dist = length(oc - rd * dot(oc, rd));
+  float along = dot(oc, rd);
+  float dist = length(oc - rd * along);
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
-  float radial = pow(1.0 - h, uFadePower);
 
-  // Scintillation around the outer halo (mid–outer band stays bright enough to see).
-  vec3 fromC = normalize(vWorldPos - uPlanetCenter);
-  float ang = atan(fromC.y, fromC.x);
+  // Angle around the limb in the view plane.
+  vec3 limb = oc - rd * along;
+  float ang = atan(limb.y, limb.x);
   float t = uTime;
-  float a0 = ang * 4.0 + t * 1.4;
-  float a1 = ang * 9.0 - t * 2.1;
-  float a2 = ang * 17.0 + t * 3.3;
-  float n =
-    0.50 * sin(a0) +
-    0.32 * sin(a1 + 1.7) +
-    0.18 * sin(a2 + hash21(vec2(floor(ang * 10.0), floor(t * 3.0))) * 6.2831);
-  float band = smoothstep(0.18, 0.42, h) * smoothstep(1.0, 0.62, h);
-  float tip = smoothstep(0.40, 0.88, h) * pow(max(1.0 - h, 0.0), 0.35);
-  float flicker = 1.0 + n * 0.45 * band;
-  float glow = (radial * flicker + tip * (0.55 + 0.45 * n) * 0.55) * uIntensity;
-  gl_FragColor = vec4(uColor * glow, 1.0);
+
+  // Rising flame field: tongues climb outward and shear sideways.
+  float rise = h * 3.4 - t * 2.8;
+  float shear = ang * 2.4 + t * 0.9;
+  float field = fbm(vec2(shear, rise));
+  field = mix(field, fbm(vec2(ang * 6.1 - t * 1.7, h * 4.2 - t * 3.6)), 0.45);
+
+  // Irregular reach — some tongues tall, some short.
+  float reach = mix(0.38, 1.08, clamp(field * 1.25, 0.0, 1.0));
+  float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
+  body = pow(max(body, 0.0), mix(1.25, 0.45, field));
+
+  // Whole halo breathes like a fire.
+  float breath =
+    0.72 +
+    0.18 * sin(t * 7.2 + ang * 1.8) +
+    0.12 * sin(t * 14.5 - ang * 4.5) +
+    0.14 * (fbm(vec2(t * 2.4, ang * 0.9)) - 0.5);
+
+  // Hot gold near the limb, cooler orange at the tips.
+  vec3 tipCol = vec3(1.0, 0.38, 0.06);
+  vec3 col = mix(uColor, tipCol, smoothstep(0.2, 0.95, h) * (0.35 + 0.65 * field));
+
+  float glow = body * uIntensity * breath * (0.7 + 0.7 * field);
+  glow *= pow(max(1.0 - h * 0.15, 0.0), uFadePower);
+  gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
 `;
 
