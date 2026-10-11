@@ -149,10 +149,12 @@ def add_day(best, best_mu, flat, z, valid, gain: float) -> None:
     best_mu[better] = z[better]
 
 
-def cap_poles(best: np.ndarray) -> None:
-    """The poles are never photographed straight on. Continue them in the same gold.
+def cap_poles(best: np.ndarray, best_mu: np.ndarray) -> None:
+    """Fill only the latitudes this turn's disks never see clearly.
 
-    Sampled in the pole's own plane so the cap is not a black hole, a spoke, or rings.
+    B0 is ±7°, so one pole sits on the limb and the other is tipped away.
+    A fixed 78° paint covered real 171. Each bake caps poleward of where
+    most longitudes drop below mu 0.10 (about 6× foreshortened).
     """
     h, w = best.shape[:2]
     rng = np.random.default_rng(5)
@@ -166,21 +168,33 @@ def cap_poles(best: np.ndarray) -> None:
     lon = (0.5 - xs / w) * 2 * math.pi
     cosl = np.cos(lon)
     sinl = np.sin(lon)
+    clear_mu = 0.10
 
     def row_at(lat: float) -> int:
-        return int(round((90.0 - lat) / 180.0 * (h - 1)))
+        return int(np.clip(round((90.0 - lat) / 180.0 * (h - 1)), 0, h - 1))
+
+    def edge_lat(sign: int) -> float:
+        for lat in np.arange(89.5, 62.0, -0.25):
+            if float((best_mu[row_at(lat * sign)] >= clear_mu).mean()) >= 0.8:
+                return float(lat)
+        return 70.0
 
     for sign in (1, -1):
-        color = best[row_at(72.0 * sign)].mean(axis=0).astype(np.float32)
-        y0, y1 = (0, row_at(74)) if sign > 0 else (row_at(-74), h)
+        edge = edge_lat(sign)
+        name = "N" if sign > 0 else "S"
+        print(f"  pole cap {name} from {edge:.1f}°", flush=True)
+        color = best[row_at((edge - 3.0) * sign)].mean(axis=0).astype(np.float32)
+        blend = 2.0
+        y0, y1 = (0, row_at((edge - 0.5) * sign)) if sign > 0 else (row_at(-(edge - 0.5)), h)
+        if y1 < y0:
+            y0, y1 = y1, y0
         for y in range(y0, y1):
-            lat = 90.0 - (y / (h - 1)) * 180.0
-            alat = abs(lat)
-            if alat < 78:
+            alat = abs(90.0 - (y / (h - 1)) * 180.0)
+            if alat < edge:
                 continue
-            t = min(1.0, (alat - 78.0) / 5.0)
+            t = min(1.0, (alat - edge) / blend)
             t = t * t * (3 - 2 * t)
-            r = math.cos(math.radians(lat)) / math.cos(math.radians(78))
+            r = math.cos(math.radians(min(alat, 89.5))) / math.cos(math.radians(min(edge, 89.0)))
             u = 0.5 + 0.46 * r * cosl
             v = 0.5 + 0.46 * r * sinl
             iu = np.clip((u * (gw - 1)).astype(np.int32), 0, gw - 1)
@@ -251,7 +265,7 @@ def main() -> None:
     print(f"covered {covered.mean():.1%}", flush=True)
     if covered.mean() < 0.9:
         raise SystemExit(f"coverage {covered.mean():.1%} is too low, keeping the current sun")
-    cap_poles(best)
+    cap_poles(best, best_mu)
     south = best[int(H * 0.98) :]
     north = best[: int(H * 0.02)]
     if float(south.mean()) < 20 or float(north.mean()) < 20:
