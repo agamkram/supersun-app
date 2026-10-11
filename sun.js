@@ -146,7 +146,13 @@ uniform float uFadePower;
 uniform vec3 uPlanetCenter;
 uniform float uPlanetRadius;
 uniform float uAtmoRadius;
+uniform float uTime;
 varying vec3 vWorldPos;
+
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 void main() {
   vec3 rd = normalize(vWorldPos - cameraPosition);
   vec3 oc = cameraPosition - uPlanetCenter;
@@ -154,7 +160,22 @@ void main() {
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
   float radial = pow(1.0 - h, uFadePower);
-  float glow = radial * uIntensity;
+
+  // Soft random shimmer on the outer fringe only.
+  vec3 fromC = normalize(vWorldPos - uPlanetCenter);
+  float ang = atan(fromC.y, fromC.x);
+  float t = uTime;
+  float a0 = ang * 3.0 + t * 0.35;
+  float a1 = ang * 7.0 - t * 0.55;
+  float a2 = ang * 13.0 + t * 1.1;
+  float n =
+    0.55 * sin(a0) +
+    0.30 * sin(a1 + 1.7) +
+    0.15 * sin(a2 + hash21(vec2(floor(ang * 8.0), floor(t * 2.0))) * 6.2831);
+  float outer = smoothstep(0.28, 0.95, h);
+  float flicker = 1.0 + n * 0.12 * outer;
+
+  float glow = radial * uIntensity * flicker;
   gl_FragColor = vec4(uColor * glow, 1.0);
 }
 `;
@@ -368,6 +389,7 @@ export function createSunGlobe(canvas, options = {}) {
         uPlanetCenter: { value: new THREE.Vector3() },
         uPlanetRadius: { value: RADIUS },
         uAtmoRadius: { value: RADIUS * ATMO_HEIGHT },
+        uTime: { value: 0 },
       },
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
@@ -386,7 +408,7 @@ export function createSunGlobe(canvas, options = {}) {
     sunGroup.add(atmosphere);
   }
 
-  function updateAtmosphereLight() {
+  function updateAtmosphereLight(nowMs) {
     if (!atmosphereMat || !atmosphere) return;
     sunGroup.getWorldPosition(_atmoCenter);
     sunGroup.getWorldScale(_atmoScale);
@@ -394,6 +416,8 @@ export function createSunGlobe(canvas, options = {}) {
     atmosphereMat.uniforms.uPlanetCenter.value.copy(_atmoCenter);
     atmosphereMat.uniforms.uPlanetRadius.value = RADIUS * g;
     atmosphereMat.uniforms.uAtmoRadius.value = RADIUS * ATMO_HEIGHT * g;
+    const t = typeof nowMs === "number" ? nowMs : performance.now();
+    atmosphereMat.uniforms.uTime.value = t * 0.001;
   }
 
   function loadLow() {
@@ -1106,7 +1130,7 @@ export function createSunGlobe(canvas, options = {}) {
       }
     }
     syncSun();
-    updateAtmosphereLight();
+    updateAtmosphereLight(now);
     renderer.render(scene, camera);
   }
 
