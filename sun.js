@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=17", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=18", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -182,28 +182,30 @@ void main() {
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
 
-  // Angle around the limb in the view plane.
+  // Limb direction in the view plane. Use cos/sin so noise has no atan seam.
   vec3 limb = oc - rd * along;
   float ang = atan(limb.y, limb.x);
-  float t = uTime;
+  float ca = cos(ang);
+  float sa = sin(ang);
+  float t = uTime * 0.38;
 
-  // Rising flame field: tongues climb outward and shear sideways.
-  float rise = h * 3.4 - t * 2.8;
-  float shear = ang * 2.4 + t * 0.9;
-  float field = fbm(vec2(shear, rise));
-  field = mix(field, fbm(vec2(ang * 6.1 - t * 1.7, h * 4.2 - t * 3.6)), 0.45);
+  // Rising flame field on a circle (seamless) × height.
+  float rise = h * 2.8 - t * 1.15;
+  vec2 ring = vec2(ca, sa);
+  float field = fbm(ring * 2.1 + vec2(rise, t * 0.35));
+  field = mix(field, fbm(ring * 4.6 + vec2(h * 3.2 - t * 1.5, -t * 0.55)), 0.45);
 
   // Irregular reach — some tongues tall, some short.
   float reach = mix(0.38, 1.08, clamp(field * 1.25, 0.0, 1.0));
   float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
   body = pow(max(body, 0.0), mix(1.25, 0.45, field));
 
-  // Whole halo breathes like a fire.
+  // Whole halo breathes like a fire (trig of ang is continuous).
   float breath =
-    0.72 +
-    0.18 * sin(t * 7.2 + ang * 1.8) +
-    0.12 * sin(t * 14.5 - ang * 4.5) +
-    0.14 * (fbm(vec2(t * 2.4, ang * 0.9)) - 0.5);
+    0.78 +
+    0.12 * sin(t * 3.2 + ang * 1.8) +
+    0.08 * sin(t * 5.8 - ang * 4.5) +
+    0.10 * (fbm(ring * 1.4 + vec2(t * 0.9, 0.0)) - 0.5);
 
   // Hot gold near the limb, cooler orange at the tips.
   vec3 tipCol = vec3(1.0, 0.38, 0.06);
