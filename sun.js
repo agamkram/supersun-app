@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=15", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=16", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -161,21 +161,21 @@ void main() {
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
   float radial = pow(1.0 - h, uFadePower);
 
-  // Soft random shimmer on the outer fringe only.
+  // Scintillation around the outer halo (mid–outer band stays bright enough to see).
   vec3 fromC = normalize(vWorldPos - uPlanetCenter);
   float ang = atan(fromC.y, fromC.x);
   float t = uTime;
-  float a0 = ang * 3.0 + t * 0.35;
-  float a1 = ang * 7.0 - t * 0.55;
-  float a2 = ang * 13.0 + t * 1.1;
+  float a0 = ang * 4.0 + t * 1.4;
+  float a1 = ang * 9.0 - t * 2.1;
+  float a2 = ang * 17.0 + t * 3.3;
   float n =
-    0.55 * sin(a0) +
-    0.30 * sin(a1 + 1.7) +
-    0.15 * sin(a2 + hash21(vec2(floor(ang * 8.0), floor(t * 2.0))) * 6.2831);
-  float outer = smoothstep(0.28, 0.95, h);
-  float flicker = 1.0 + n * 0.12 * outer;
-
-  float glow = radial * uIntensity * flicker;
+    0.50 * sin(a0) +
+    0.32 * sin(a1 + 1.7) +
+    0.18 * sin(a2 + hash21(vec2(floor(ang * 10.0), floor(t * 3.0))) * 6.2831);
+  float band = smoothstep(0.18, 0.42, h) * smoothstep(1.0, 0.62, h);
+  float tip = smoothstep(0.40, 0.88, h) * pow(max(1.0 - h, 0.0), 0.35);
+  float flicker = 1.0 + n * 0.45 * band;
+  float glow = (radial * flicker + tip * (0.55 + 0.45 * n) * 0.55) * uIntensity;
   gl_FragColor = vec4(uColor * glow, 1.0);
 }
 `;
