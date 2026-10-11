@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=26", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=27", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -124,24 +124,24 @@ const LIMB_U = 0.62;
 /**
  * Corona as a flickering flame shell.
  * BackSide; irregular tongues all around — the Sun has no night side.
- * Numbered tries (FLAME_TRY) so we can refer to looks; temp panel tunes uniforms.
+ * Numbered tries (FLAME_TRY). Halo body always draws; knobs reshape it.
  */
-const FLAME_TRY = 26;
+const FLAME_TRY = 27;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
-/** Defaults for the temp flame panel. Random = stochastic cells, not jitter on a form. */
+/** Defaults for the temp flame panel. */
 const FLAME_DEFAULTS = {
-  speed: 0.24,
-  warp: 0.85,
-  detail: 0.55,
-  breakup: 0.7,
-  contrast: 0.55,
-  breath: 0.35,
-  flicker: 0.55,
-  random: 0,
+  speed: 0.26,
+  warp: 0.9,
+  detail: 0.38,
+  breakup: 0.55,
+  contrast: 0.5,
+  breath: 0.55,
+  flicker: 0.45,
+  random: 0.4,
   intensity: ATMO_INTENSITY,
 };
 
@@ -197,29 +197,9 @@ float fbm(vec2 p) {
   return v;
 }
 
-// One random draw per cell lifetime. Hold, then hard redraw.
 float holdNoise(vec2 id, float time, float rate) {
   float tick = floor(time * max(rate, 0.05));
   return hash21(id + vec2(tick * 1.7, tick * 0.31 + 19.0));
-}
-
-// Sparse tongues: most of the ring is dark; lit cells jump height/brightness.
-float stochasticFire(float ang, float h, float time, float rate, float cells) {
-  float u = (ang + 3.14159265) * 0.15915494309 * cells;
-  float s = floor(u);
-  float f = fract(u);
-  // Center window inside the sector — narrow spikes, clear gaps.
-  float win = 1.0 - abs(f - 0.5) * 2.0;
-  win = pow(max(win, 0.0), mix(1.8, 4.5, holdNoise(vec2(s, cells + 3.0), time, rate * 0.5)));
-  float alive = holdNoise(vec2(s, cells + 40.0), time, rate);
-  // Sparse: only ~30% of sectors lit this lifetime.
-  float on = step(0.70, alive);
-  float bright = mix(0.55, 1.0, holdNoise(vec2(s, cells + 9.0), time, rate));
-  float hgt = mix(0.35, 1.15, holdNoise(vec2(s, cells + 80.0), time, rate * 0.7));
-  float radial = pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.75);
-  // Tip pop — dies/lives faster than the body.
-  float tip = holdNoise(vec2(s, cells + 200.0), time, rate * 2.8);
-  return on * bright * win * radial * mix(0.65, 1.35, tip);
 }
 
 void main() {
@@ -230,59 +210,62 @@ void main() {
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
 
+  // Limb direction in the view plane. cos/sin — no atan seam in the noise.
   vec3 limb = oc - rd * along;
   float ang = atan(limb.y, limb.x);
   float ca = cos(ang);
   float sa = sin(ang);
-  float t = uTime * uSpeed;
+  float t = uTime * max(uSpeed, 0.02);
   vec2 ring = vec2(ca, sa);
-  float R = clamp(uRandom, 0.0, 1.0);
 
-  // --- Coherent path (form) ---
+  // Always-on flame body (the visible halo). Knobs reshape; they never remove it.
   float rise = h * 2.6 - t * 0.95;
   float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
   vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp;
   float field = fbm(warped + vec2(rise, t * 0.28));
-  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9, t * 0.2));
-  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45));
-  field = mix(field, mid, 0.35 * uBreakup);
+  float mid = fbm(ring * mix(3.0, 6.5, uBreakup) + vec2(h * 2.2 - t * 0.9, t * 0.2));
+  float detail = fbm(ring * mix(4.5, 8.0, uBreakup) + vec2(h * 2.8 - t * 1.15, -t * 0.4));
+  field = mix(field, mid, 0.3 * uBreakup);
   field = mix(field, detail, uDetail);
-  float lo = mix(0.22, 0.4, 1.0 - uContrast);
-  float hi = mix(0.85, 0.62, uContrast);
+
+  float lo = mix(0.22, 0.38, 1.0 - uContrast);
+  float hi = mix(0.82, 0.62, uContrast);
   float tongue = smoothstep(lo, hi, field);
+
   float reach = mix(0.34, 1.1, tongue);
-  float coherent = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
-  coherent = pow(max(coherent, 0.0), mix(1.35, 0.4, tongue));
-  coherent *= 0.62 + 0.85 * tongue;
-
-  // --- Stochastic path: sparse jumping tongues (must look unlike coherent) ---
-  float rate = 0.9 + uSpeed * 4.0;
-  float cellsA = mix(12.0, 20.0, uBreakup);
-  float cellsB = mix(22.0, 40.0, uDetail);
-  float fire =
-    1.1 * stochasticFire(ang, h, uTime, rate, cellsA) +
-    0.85 * stochasticFire(ang + 1.3, h, uTime, rate * 1.4, cellsB);
-  fire *= 1.0 + uFlicker * 0.45 * (holdNoise(vec2(floor(ang * 6.0), 1.0), uTime, rate * 1.6) - 0.5);
-
-  // Under-glow collapses as Random rises so gaps between tongues read clearly.
-  float under = pow(clamp(1.0 - h, 0.0, 1.0), uFadePower + 0.9) * 0.3 * (1.0 - 0.9 * R);
-
-  float body = mix(coherent, fire * 1.8, R) + under;
+  float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
+  body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
 
   float breath =
-    1.0 +
-    uBreath * (1.0 - R) * (
+    0.82 +
+    uBreath * (
       0.1 * sin(t * 2.4 + ang * 1.6) +
-      0.08 * sin(t * 4.2 - ang * 3.8)
+      0.08 * sin(t * 4.2 - ang * 3.8) +
+      0.14 * (fbm(ring * 1.3 + vec2(t * 0.65, h * 1.2)) - 0.5)
+    );
+  float local =
+    1.0 +
+    uFlicker * (
+      0.4 * (tongue - 0.5) +
+      0.3 * (detail - 0.5)
     );
 
-  vec3 tipCol = vec3(1.0, 0.36, 0.05);
-  float tipMix = smoothstep(0.18, 0.95, h) * mix(0.3 + 0.7 * tongue, 0.7, R);
-  vec3 col = mix(uColor, tipCol, tipMix);
+  // Random = extra discontinuous pops on top of the halo, never a replacement.
+  float R = clamp(uRandom, 0.0, 1.0);
+  float sector = floor((ang + 3.14159265) * 0.15915494309 * 16.0);
+  float pop = holdNoise(vec2(sector, 3.0), uTime, 2.0 + R * 3.0);
+  float pop2 = holdNoise(vec2(sector, 11.0), uTime, 3.2 + R * 4.0);
+  float crackle = 1.0 + R * (0.55 * (pop - 0.5) + 0.4 * (pop2 - 0.5));
+  float lick = body * R * step(0.78, pop) * 0.55 * (1.0 - h);
 
-  float glow = body * uIntensity * breath;
+  vec3 tipCol = vec3(1.0, 0.36, 0.05);
+  vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
+
+  float glow = (body * (0.62 + 0.85 * tongue) * breath * local * crackle + lick) * uIntensity;
   glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
-  gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
+  // Floor so the shell never disappears if knobs go weird.
+  glow = max(glow, pow(max(1.0 - h, 0.0), 2.2) * uIntensity * 0.22);
+  gl_FragColor = vec4(col * glow, 1.0);
 }
 `;
 
@@ -358,6 +341,7 @@ export function createSunGlobe(canvas, options = {}) {
     alpha: false,
     powerPreference: "high-performance",
   });
+  renderer.debug.checkShaderErrors = true;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
   renderer.setClearColor(0x020308, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
