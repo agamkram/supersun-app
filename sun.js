@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=20", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=21", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -125,9 +125,9 @@ const LIMB_U = 0.62;
  * Corona as a flickering flame shell.
  * BackSide; irregular tongues all around — the Sun has no night side.
  */
-const ATMO_HEIGHT = 1.14;
+const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
-const ATMO_INTENSITY = 0.72;
+const ATMO_INTENSITY = 0.74;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
 const ATMO_VERTEX = /* glsl */ `
@@ -187,32 +187,37 @@ void main() {
   float ang = atan(limb.y, limb.x);
   float ca = cos(ang);
   float sa = sin(ang);
-  float t = uTime * 0.38;
-
-  // Rising flame field on a circle (seamless) × height.
-  float rise = h * 2.8 - t * 1.15;
+  float t = uTime * 0.26;
   vec2 ring = vec2(ca, sa);
-  float field = fbm(ring * 2.1 + vec2(rise, t * 0.35));
-  field = mix(field, fbm(ring * 4.6 + vec2(h * 3.2 - t * 1.5, -t * 0.55)), 0.45);
+
+  // Rising flame field: warp the circle a little so tongues feel organic.
+  float rise = h * 2.6 - t * 0.95;
+  float warp = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
+  vec2 warped = ring * 2.2 + (warp - 0.5) * 0.9;
+  float field = fbm(warped + vec2(rise, t * 0.28));
+  float detail = fbm(ring * 5.2 + vec2(h * 2.8 - t * 1.15, -t * 0.4));
+  field = mix(field, detail, 0.38);
+  // Sharper tongue contrast without changing the overall look.
+  float tongue = smoothstep(0.28, 0.78, field);
 
   // Irregular reach — some tongues tall, some short.
-  float reach = mix(0.38, 1.08, clamp(field * 1.25, 0.0, 1.0));
+  float reach = mix(0.34, 1.1, tongue);
   float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
-  body = pow(max(body, 0.0), mix(1.25, 0.45, field));
+  body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
 
-  // Whole halo breathes like a fire (trig of ang is continuous).
+  // Soft whole-halo breath; local gutter on the tips.
   float breath =
-    0.78 +
-    0.12 * sin(t * 3.2 + ang * 1.8) +
-    0.08 * sin(t * 5.8 - ang * 4.5) +
-    0.10 * (fbm(ring * 1.4 + vec2(t * 0.9, 0.0)) - 0.5);
+    0.82 +
+    0.08 * sin(t * 2.4 + ang * 1.6) +
+    0.06 * sin(t * 4.2 - ang * 3.8) +
+    0.12 * (fbm(ring * 1.3 + vec2(t * 0.65, h * 1.2)) - 0.5);
 
   // Hot gold near the limb, cooler orange at the tips.
-  vec3 tipCol = vec3(1.0, 0.38, 0.06);
-  vec3 col = mix(uColor, tipCol, smoothstep(0.2, 0.95, h) * (0.35 + 0.65 * field));
+  vec3 tipCol = vec3(1.0, 0.36, 0.05);
+  vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
 
-  float glow = body * uIntensity * breath * (0.7 + 0.7 * field);
-  glow *= pow(max(1.0 - h * 0.15, 0.0), uFadePower);
+  float glow = body * uIntensity * breath * (0.62 + 0.85 * tongue);
+  glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
   gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
 `;
