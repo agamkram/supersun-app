@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=22", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=23", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -126,7 +126,7 @@ const LIMB_U = 0.62;
  * BackSide; irregular tongues all around — the Sun has no night side.
  * Numbered tries (FLAME_TRY) so we can refer to looks; temp panel tunes uniforms.
  */
-const FLAME_TRY = 22;
+const FLAME_TRY = 23;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
@@ -141,6 +141,7 @@ const FLAME_DEFAULTS = {
   contrast: 0.55,
   breath: 0.35,
   flicker: 0.55,
+  random: 0.55,
   intensity: ATMO_INTENSITY,
 };
 
@@ -168,6 +169,7 @@ uniform float uBreakup;
 uniform float uContrast;
 uniform float uBreath;
 uniform float uFlicker;
+uniform float uRandom;
 varying vec3 vWorldPos;
 
 float hash21(vec2 p) {
@@ -195,6 +197,17 @@ float fbm(vec2 p) {
   return v;
 }
 
+// Hard temporal steps — not a smooth wave. This is the "fire is random" channel.
+float crackle(vec2 cell, float time, float rate) {
+  float tick = floor(time * rate);
+  float a = hash21(cell + vec2(tick, 17.0));
+  float b = hash21(cell + vec2(tick + 1.0, 17.0));
+  // Tiny ease so it isn't pure strobe, but still jumps.
+  float f = fract(time * rate);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(a, b, f * 0.35 + step(0.72, f) * 0.65);
+}
+
 void main() {
   vec3 rd = normalize(vWorldPos - cameraPosition);
   vec3 oc = cameraPosition - uPlanetCenter;
@@ -211,21 +224,33 @@ void main() {
   float t = uTime * uSpeed;
   vec2 ring = vec2(ca, sa);
 
+  // Discrete angular / radial cells for random pops (independent of the smooth field).
+  float sector = floor((ang + 3.14159265) / 6.2831853 * 18.0);
+  float band = floor(h * 6.0);
+  vec2 cell = vec2(sector, band);
+  float pop = crackle(cell, uTime, mix(4.0, 14.0, uRandom));
+  float pop2 = crackle(cell + vec2(31.0, 7.0), uTime * 1.37, mix(6.0, 20.0, uRandom));
+  float jitter = (pop - 0.5) * uRandom;
+  float snap = (pop2 - 0.5) * uRandom;
+
   // Rising flame field on a warped circle. Mid-band breakup cuts long arches.
-  float rise = h * 2.6 - t * 0.95;
-  float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
-  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp;
-  float field = fbm(warped + vec2(rise, t * 0.28));
-  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9, t * 0.2));
-  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45));
+  // Randomness yanks phase/reach so the series stops looking like one coherent loop.
+  float rise = h * 2.6 - t * 0.95 + snap * 1.4;
+  float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22 + jitter));
+  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp + ring.yx * snap * 0.55;
+  float field = fbm(warped + vec2(rise, t * 0.28 + jitter * 2.0));
+  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9 + snap, t * 0.2));
+  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45 + jitter));
   field = mix(field, mid, 0.35 * uBreakup);
   field = mix(field, detail, uDetail);
+  field = mix(field, pop, 0.45 * uRandom);
 
   float lo = mix(0.22, 0.4, 1.0 - uContrast);
   float hi = mix(0.85, 0.62, uContrast);
   float tongue = smoothstep(lo, hi, field);
 
   float reach = mix(0.34, 1.1, tongue);
+  reach *= mix(1.0, mix(0.55, 1.35, pop), uRandom);
   float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
   body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
 
@@ -244,11 +269,19 @@ void main() {
       0.35 * (detail - 0.5) +
       0.25 * (fbm(ring * 6.0 + vec2(h * 4.0 - t * 1.8, t * 0.5)) - 0.5)
     );
+  // Random channel: discontinuous pops, not another sine.
+  float chaos =
+    1.0 +
+    uRandom * (
+      0.7 * (pop - 0.5) +
+      0.45 * (pop2 - 0.5) +
+      0.25 * step(0.82, pop) // occasional bright lick
+    );
 
   vec3 tipCol = vec3(1.0, 0.36, 0.05);
   vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
 
-  float glow = body * uIntensity * breath * local * (0.62 + 0.85 * tongue);
+  float glow = body * uIntensity * breath * local * chaos * (0.62 + 0.85 * tongue);
   glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
   gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
@@ -463,6 +496,7 @@ export function createSunGlobe(canvas, options = {}) {
     u.uContrast.value = flameParams.contrast;
     u.uBreath.value = flameParams.breath;
     u.uFlicker.value = flameParams.flicker;
+    u.uRandom.value = flameParams.random;
     u.uIntensity.value = flameParams.intensity;
   }
 
@@ -501,6 +535,7 @@ export function createSunGlobe(canvas, options = {}) {
         uContrast: { value: flameParams.contrast },
         uBreath: { value: flameParams.breath },
         uFlicker: { value: flameParams.flicker },
+        uRandom: { value: flameParams.random },
       },
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
