@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=28", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=29", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -125,24 +125,24 @@ const LIMB_U = 0.62;
  * Corona as a flickering flame shell.
  * Pick a pattern (0–9), then refine that design later.
  */
-const FLAME_TRY = 28;
+const FLAME_TRY = 29;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
-/** Ten structurally different looks — not tweaks of one field. */
+/** Ten different fire systems — each its own algorithm, not one field with knobs. */
 const FLAME_PATTERNS = [
   { id: 0, name: "Ribbon" },
-  { id: 1, name: "Tall tongues" },
-  { id: 2, name: "Sheet" },
-  { id: 3, name: "Sparse pops" },
+  { id: 1, name: "Needles" },
+  { id: 2, name: "Curtain" },
+  { id: 3, name: "Pops" },
   { id: 4, name: "Tip crackle" },
-  { id: 5, name: "Twin band" },
-  { id: 6, name: "Ember ring" },
-  { id: 7, name: "Broken arches" },
+  { id: 5, name: "Opposite lobes" },
+  { id: 6, name: "Ember" },
+  { id: 7, name: "Pie slices" },
   { id: 8, name: "Boil" },
-  { id: 9, name: "Storm" },
+  { id: 9, name: "Bolts" },
 ];
 
 const FLAME_DEFAULTS = {
@@ -205,6 +205,13 @@ float shell(float h, float reach, float power) {
   return pow(max(b, 0.0), power);
 }
 
+// Soft angular window around a sector center (0..1 inside, 0 outside).
+float sectorWin(float ang, float cells, float sharpness) {
+  float u = (ang + 3.14159265) * 0.15915494309 * cells;
+  float f = abs(fract(u) - 0.5) * 2.0;
+  return pow(max(1.0 - f, 0.0), sharpness);
+}
+
 void main() {
   vec3 rd = normalize(vWorldPos - cameraPosition);
   vec3 oc = cameraPosition - uPlanetCenter;
@@ -218,16 +225,16 @@ void main() {
   float ca = cos(ang);
   float sa = sin(ang);
   vec2 ring = vec2(ca, sa);
-  float sec = floor((ang + 3.14159265) * 0.15915494309 * 18.0);
   float P = clamp(floor(uPattern + 0.5), 0.0, 9.0);
 
   float body = 0.0;
   float tongue = 0.5;
   float pulse = 1.0;
+  float floorK = 0.04; // tiny limb kiss only — a big floor made every pattern look like "Sheet"
   vec3 tipCol = vec3(1.0, 0.36, 0.05);
 
   if (P < 0.5) {
-    // Ribbon — smooth rising warp (the earlier "liked" family).
+    // 0 Ribbon — continuous rising warp field.
     float t = uTime * 0.26;
     float rise = h * 2.6 - t * 0.95;
     float w = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
@@ -235,101 +242,116 @@ void main() {
     field = mix(field, fbm(ring * 5.2 + vec2(h * 2.8 - t * 1.15, -t * 0.4)), 0.38);
     tongue = smoothstep(0.28, 0.78, field);
     body = shell(h, mix(0.34, 1.1, tongue), mix(1.35, 0.4, tongue));
-    pulse = 0.88 + 0.12 * sin(t * 2.2 + ang * 1.5);
+    pulse = 0.9 + 0.1 * sin(t * 2.2 + ang * 1.5);
+    floorK = 0.08;
   } else if (P < 1.5) {
-    // Tall tongues — few, high, slow sway.
-    float t = uTime * 0.18;
-    float field = fbm(ring * 1.35 + vec2(h * 1.4 - t * 0.55, t * 0.15));
-    tongue = smoothstep(0.45, 0.85, field);
-    body = shell(h, mix(0.5, 1.25, tongue), mix(1.6, 0.35, tongue));
-    pulse = 0.9 + 0.1 * fbm(ring * 0.9 + vec2(t * 0.4, 0.0));
-  } else if (P < 2.5) {
-    // Sheet — broad soft corona, gentle breath.
-    float t = uTime * 0.22;
-    float field = fbm(ring * 1.1 + vec2(h * 1.2 - t * 0.35, t * 0.2));
-    tongue = smoothstep(0.15, 0.65, field);
-    body = shell(h, mix(0.55, 0.95, tongue), 1.1);
-    pulse = 0.85 + 0.15 * sin(t * 1.6);
-    tipCol = vec3(1.0, 0.55, 0.18);
-  } else if (P < 3.5) {
-    // Sparse pops — independent cells birth/die; gaps stay.
-    float t = uTime;
-    float u = (ang + 3.14159265) * 0.15915494309 * 14.0;
-    float s = floor(u);
-    float f = fract(u);
-    float win = pow(max(1.0 - abs(f - 0.5) * 2.0, 0.0), 2.8);
-    float alive = holdNoise(vec2(s, 3.0), t, 1.6);
-    float on = step(0.62, alive);
-    float hgt = mix(0.4, 1.15, holdNoise(vec2(s, 8.0), t, 1.2));
-    float bright = mix(0.5, 1.0, holdNoise(vec2(s, 12.0), t, 1.6));
+    // 1 Needles — ~10 thin spikes, most of the ring dark, heights jump.
+    float cells = 10.0;
+    float s = floor((ang + 3.14159265) * 0.15915494309 * cells);
+    float win = sectorWin(ang, cells, 5.5);
+    float on = step(0.55, holdNoise(vec2(s, 1.0), uTime, 0.9));
+    float hgt = mix(0.55, 1.25, holdNoise(vec2(s, 2.0), uTime, 0.7));
+    float bright = mix(0.65, 1.0, holdNoise(vec2(s, 3.0), uTime, 0.9));
     tongue = on * win * bright;
-    body = tongue * pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.7);
+    body = tongue * pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.55);
     pulse = 1.0;
-  } else if (P < 4.5) {
-    // Tip crackle — soft body, noisy tips.
-    float t = uTime * 0.24;
-    float field = fbm(ring * 2.0 + vec2(h * 2.0 - t * 0.7, t * 0.25));
-    tongue = smoothstep(0.25, 0.7, field);
-    body = shell(h, mix(0.4, 1.0, tongue), 1.0);
-    float tip = holdNoise(vec2(sec, 4.0), uTime, 5.5);
-    pulse = 0.92 + 0.35 * smoothstep(0.35, 0.9, h) * (tip - 0.35);
-  } else if (P < 5.5) {
-    // Twin band — two angular speeds beat against each other.
-    float t = uTime * 0.3;
-    float a = fbm(ring * 2.4 + vec2(h * 2.0 - t * 0.8, t * 0.3));
-    float b = fbm(ring.yx * 3.1 + vec2(h * 2.4 + t * 0.55, -t * 0.45));
-    float field = 0.55 * a + 0.45 * b;
-    tongue = smoothstep(0.3, 0.75, field);
-    body = shell(h, mix(0.36, 1.08, tongue), mix(1.3, 0.45, tongue));
-    pulse = 0.86 + 0.14 * sin(t * 3.0 + ang * 2.0) * sin(t * 1.7 - ang * 5.0);
-  } else if (P < 6.5) {
-    // Ember ring — short, hot, restless.
-    float t = uTime * 0.4;
-    float field = fbm(ring * 3.4 + vec2(h * 3.5 - t * 1.4, t * 0.5));
-    tongue = smoothstep(0.35, 0.8, field);
-    body = shell(h, mix(0.28, 0.72, tongue), 0.85);
-    float pop = holdNoise(vec2(sec, 6.0), uTime, 4.0);
-    pulse = 0.8 + 0.35 * (pop - 0.3);
-    tipCol = vec3(1.0, 0.28, 0.04);
-  } else if (P < 7.5) {
-    // Broken arches — mid-frequency chops the ring into chunks.
+    floorK = 0.02;
+  } else if (P < 2.5) {
+    // 2 Curtain — vertical streaks shearing sideways (not a soft sheet).
     float t = uTime * 0.2;
-    float field = fbm(ring * 5.5 + vec2(h * 2.0 - t * 0.6, t * 0.2));
-    float chop = smoothstep(0.35, 0.55, fbm(ring * 8.0 + vec2(t * 0.15, h)));
-    tongue = smoothstep(0.3, 0.7, field) * chop;
-    body = shell(h, mix(0.38, 1.05, tongue), mix(1.4, 0.5, tongue));
-    pulse = 0.9 + 0.1 * chop;
+    float shear = ang + t * 0.55;
+    float streak = abs(fract(shear * 2.2) - 0.5) * 2.0;
+    streak = 1.0 - smoothstep(0.15, 0.55, streak);
+    float rise = fbm(vec2(shear * 1.4, h * 3.0 - t * 1.1));
+    tongue = streak * smoothstep(0.25, 0.7, rise);
+    body = tongue * pow(clamp(1.0 - h / mix(0.5, 1.15, rise), 0.0, 1.0), 0.8);
+    pulse = 0.9 + 0.1 * sin(t * 3.0 + shear * 4.0);
+    floorK = 0.03;
+  } else if (P < 3.5) {
+    // 3 Pops — fat sectors that hard-switch on/off.
+    float cells = 12.0;
+    float s = floor((ang + 3.14159265) * 0.15915494309 * cells);
+    float win = sectorWin(ang, cells, 1.6);
+    float on = step(0.68, holdNoise(vec2(s, 30.0), uTime, 1.8));
+    float hgt = mix(0.35, 1.05, holdNoise(vec2(s, 31.0), uTime, 1.3));
+    tongue = on * win;
+    body = tongue * pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.9);
+    pulse = mix(0.7, 1.2, holdNoise(vec2(s, 32.0), uTime, 2.2));
+    floorK = 0.02;
+  } else if (P < 4.5) {
+    // 4 Tip crackle — steady fat body; only the outer fringe jumps.
+    float base = shell(h, 0.72, 1.15);
+    float tip = holdNoise(vec2(floor(ang * 14.0), 40.0), uTime, 6.0);
+    float fringe = smoothstep(0.45, 0.95, h);
+    tongue = 0.55 + 0.45 * fringe * tip;
+    body = base * (0.85 + 0.55 * fringe * (tip - 0.2));
+    pulse = 1.0;
+    floorK = 0.1;
+    tipCol = vec3(1.0, 0.5, 0.12);
+  } else if (P < 5.5) {
+    // 5 Opposite lobes — two bright poles, rest dim; lobes drift.
+    float t = uTime * 0.15;
+    float lobe = abs(cos(ang - t));
+    lobe = pow(lobe, 6.0);
+    float hgt = mix(0.5, 1.15, fbm(ring * 1.2 + vec2(t, h)));
+    tongue = lobe;
+    body = lobe * pow(clamp(1.0 - h / hgt, 0.0, 1.0), 0.7);
+    pulse = 0.92 + 0.08 * sin(t * 2.0);
+    floorK = 0.03;
+  } else if (P < 6.5) {
+    // 6 Ember — short stubby ring, hot, staccato flicker.
+    float cells = 22.0;
+    float s = floor((ang + 3.14159265) * 0.15915494309 * cells);
+    float win = sectorWin(ang, cells, 2.4);
+    float flick = holdNoise(vec2(s, 60.0), uTime, 5.5);
+    tongue = win * flick;
+    body = tongue * pow(clamp(1.0 - h / 0.55, 0.0, 1.0), 1.1);
+    pulse = 0.75 + 0.5 * flick;
+    tipCol = vec3(1.0, 0.22, 0.03);
+    floorK = 0.05;
+  } else if (P < 7.5) {
+    // 7 Pie slices — hard gear teeth; whole slices on or off.
+    float cells = 8.0;
+    float s = floor((ang + 3.14159265) * 0.15915494309 * cells);
+    float f = fract((ang + 3.14159265) * 0.15915494309 * cells);
+    float tooth = step(0.18, f) * step(f, 0.82); // hard edges
+    float on = step(0.5, holdNoise(vec2(s, 70.0), uTime, 0.85));
+    float hgt = mix(0.45, 1.1, holdNoise(vec2(s, 71.0), uTime, 0.6));
+    tongue = on * tooth;
+    body = tongue * pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.75);
+    pulse = 1.0;
+    floorK = 0.02;
   } else if (P < 8.5) {
-    // Boil — heavy domain warp, churning surface.
-    float t = uTime * 0.35;
-    float w1 = fbm(ring * 2.0 + vec2(t * 0.6, h * 2.0));
-    float w2 = fbm(ring * 3.5 - vec2(t * 0.45, h * 1.5));
-    vec2 q = ring * 2.8 + vec2(w1 - 0.5, w2 - 0.5) * 1.4;
-    float field = fbm(q + vec2(h * 3.0 - t * 1.2, t * 0.3));
-    tongue = smoothstep(0.32, 0.72, field);
-    body = shell(h, mix(0.4, 1.12, tongue), mix(1.2, 0.4, tongue));
-    pulse = 0.88 + 0.2 * (w1 - 0.5);
+    // 8 Boil — liquid domain-warp mush, no clear tongues.
+    float t = uTime * 0.4;
+    float w1 = fbm(ring * 2.2 + vec2(t * 0.7, h * 2.5));
+    float w2 = fbm(ring * 3.8 - vec2(t * 0.55, h * 1.8));
+    vec2 q = ring * 3.0 + vec2(w1 - 0.5, w2 - 0.5) * 1.8;
+    float field = fbm(q + vec2(h * 3.5 - t * 1.4, t * 0.35));
+    tongue = field;
+    body = pow(clamp(1.0 - h, 0.0, 1.0), mix(0.6, 1.8, 1.0 - field)) * (0.45 + 0.7 * field);
+    pulse = 0.85 + 0.25 * (w1 - 0.5);
+    floorK = 0.06;
   } else {
-    // Storm — sparse cells over a restless sheet.
-    float t = uTime * 0.28;
-    float sheet = fbm(ring * 1.8 + vec2(h * 2.2 - t * 0.9, t * 0.25));
-    float s = floor((ang + 3.14159265) * 0.15915494309 * 20.0);
-    float f = fract((ang + 3.14159265) * 0.15915494309 * 20.0);
-    float win = pow(max(1.0 - abs(f - 0.5) * 2.0, 0.0), 2.2);
-    float bolt = step(0.72, holdNoise(vec2(s, 9.0), uTime, 2.4)) * win;
-    float hgt = mix(0.45, 1.2, holdNoise(vec2(s, 19.0), uTime, 1.5));
-    tongue = mix(smoothstep(0.25, 0.7, sheet), 1.0, bolt);
-    body = shell(h, mix(0.4, 1.0, smoothstep(0.25, 0.7, sheet)), 1.0);
-    body = max(body, bolt * pow(clamp(1.0 - h / hgt, 0.0, 1.0), 0.65) * 1.2);
-    pulse = 0.85 + 0.25 * holdNoise(vec2(s, 1.0), uTime, 3.5);
-    tipCol = vec3(1.0, 0.42, 0.08);
+    // 9 Bolts — only discrete lightning licks; no sheet underneath.
+    float cells = 16.0;
+    float s = floor((ang + 3.14159265) * 0.15915494309 * cells);
+    float win = sectorWin(ang, cells, 3.5);
+    float strike = step(0.78, holdNoise(vec2(s, 90.0), uTime, 2.8));
+    float hgt = mix(0.6, 1.3, holdNoise(vec2(s, 91.0), uTime, 2.0));
+    float jag = holdNoise(vec2(s, floor(h * 8.0)), uTime, 8.0);
+    tongue = strike * win * mix(0.7, 1.0, jag);
+    body = tongue * pow(clamp(1.0 - h / max(hgt, 1e-3), 0.0, 1.0), 0.5);
+    pulse = 1.0;
+    tipCol = vec3(1.0, 0.7, 0.25);
+    floorK = 0.015;
   }
 
-  vec3 col = mix(uColor, tipCol, smoothstep(0.15, 0.95, h) * (0.25 + 0.75 * tongue));
-  float glow = body * (0.55 + 0.9 * tongue) * pulse * uIntensity;
-  glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
-  glow = max(glow, pow(max(1.0 - h, 0.0), 2.2) * uIntensity * 0.2);
-  gl_FragColor = vec4(col * glow, 1.0);
+  vec3 col = mix(uColor, tipCol, smoothstep(0.15, 0.95, h) * (0.2 + 0.8 * clamp(tongue, 0.0, 1.0)));
+  float glow = body * pulse * uIntensity;
+  glow *= pow(max(1.0 - h * 0.1, 0.0), uFadePower);
+  glow = max(glow, pow(max(1.0 - h, 0.0), 2.8) * uIntensity * floorK);
+  gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
 `;
 
