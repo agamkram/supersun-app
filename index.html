@@ -1191,7 +1191,7 @@
       },
       wind: {
         title: "Solar wind",
-        body: "Plasma flowing out of the corona. Typical is about 250 mi/s (400 km/s).",
+        body: "Protons and electrons from the corona. Typical is about 250 mi/s (400 km/s). DSCOVR or ACE measures it at L1, a million miles sunward of Earth, 15–60 minutes before it arrives.",
       },
       protons: {
         title: "Protons",
@@ -1382,7 +1382,7 @@
       }
       if (key === "wind" && Number.isFinite(windKms)) {
         const mis = windKms / 1.609344;
-        return `Plasma flowing out of the corona. Now ${Math.round(mis)} mi/s (${Math.round(windKms)} km/s). Typical is about 250 mi/s (400 km/s).`;
+        return `Protons and electrons from the corona. Now ${Math.round(mis)} mi/s (${Math.round(windKms)} km/s). Typical is about 250 mi/s (400 km/s). DSCOVR or ACE measures it at L1, a million miles sunward of Earth, 15–60 minutes before it arrives.`;
       }
       return fallback;
     }
