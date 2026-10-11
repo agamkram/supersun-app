@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=23", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=24", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -126,7 +126,7 @@ const LIMB_U = 0.62;
  * BackSide; irregular tongues all around — the Sun has no night side.
  * Numbered tries (FLAME_TRY) so we can refer to looks; temp panel tunes uniforms.
  */
-const FLAME_TRY = 23;
+const FLAME_TRY = 24;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
@@ -141,7 +141,7 @@ const FLAME_DEFAULTS = {
   contrast: 0.55,
   breath: 0.35,
   flicker: 0.55,
-  random: 0.55,
+  random: 0.35,
   intensity: ATMO_INTENSITY,
 };
 
@@ -197,15 +197,13 @@ float fbm(vec2 p) {
   return v;
 }
 
-// Hard temporal steps — not a smooth wave. This is the "fire is random" channel.
+// Soft-edged telegraph noise — random, but not a strobe.
 float crackle(vec2 cell, float time, float rate) {
   float tick = floor(time * rate);
   float a = hash21(cell + vec2(tick, 17.0));
   float b = hash21(cell + vec2(tick + 1.0, 17.0));
-  // Tiny ease so it isn't pure strobe, but still jumps.
-  float f = fract(time * rate);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(a, b, f * 0.35 + step(0.72, f) * 0.65);
+  float f = smoothstep(0.0, 1.0, fract(time * rate));
+  return mix(a, b, f);
 }
 
 void main() {
@@ -224,33 +222,35 @@ void main() {
   float t = uTime * uSpeed;
   vec2 ring = vec2(ca, sa);
 
-  // Discrete angular / radial cells for random pops (independent of the smooth field).
-  float sector = floor((ang + 3.14159265) / 6.2831853 * 18.0);
-  float band = floor(h * 6.0);
+  // Slider 0–1.5 → gentle curve so low values stay usable.
+  float R = clamp(uRandom, 0.0, 1.5);
+  float rAmt = R * R * 0.22; // max ~0.5 influence at slider top
+  float sector = floor((ang + 3.14159265) / 6.2831853 * 24.0);
+  float band = floor(h * 5.0);
   vec2 cell = vec2(sector, band);
-  float pop = crackle(cell, uTime, mix(4.0, 14.0, uRandom));
-  float pop2 = crackle(cell + vec2(31.0, 7.0), uTime * 1.37, mix(6.0, 20.0, uRandom));
-  float jitter = (pop - 0.5) * uRandom;
-  float snap = (pop2 - 0.5) * uRandom;
+  float pop = crackle(cell, uTime, 3.2 + R * 2.8);
+  float pop2 = crackle(cell + vec2(31.0, 7.0), uTime * 1.15, 4.5 + R * 3.0);
+  float jitter = (pop - 0.5) * rAmt;
+  float snap = (pop2 - 0.5) * rAmt;
 
   // Rising flame field on a warped circle. Mid-band breakup cuts long arches.
-  // Randomness yanks phase/reach so the series stops looking like one coherent loop.
-  float rise = h * 2.6 - t * 0.95 + snap * 1.4;
+  // Randomness nudges phase/reach — keeps the body, breaks the loop a little.
+  float rise = h * 2.6 - t * 0.95 + snap * 0.55;
   float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22 + jitter));
-  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp + ring.yx * snap * 0.55;
-  float field = fbm(warped + vec2(rise, t * 0.28 + jitter * 2.0));
-  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9 + snap, t * 0.2));
-  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45 + jitter));
+  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp + ring.yx * snap * 0.2;
+  float field = fbm(warped + vec2(rise, t * 0.28 + jitter * 0.8));
+  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9 + snap * 0.4, t * 0.2));
+  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45 + jitter * 0.5));
   field = mix(field, mid, 0.35 * uBreakup);
   field = mix(field, detail, uDetail);
-  field = mix(field, pop, 0.45 * uRandom);
+  field = mix(field, mix(field, pop, 0.35), rAmt * 1.6);
 
   float lo = mix(0.22, 0.4, 1.0 - uContrast);
   float hi = mix(0.85, 0.62, uContrast);
   float tongue = smoothstep(lo, hi, field);
 
   float reach = mix(0.34, 1.1, tongue);
-  reach *= mix(1.0, mix(0.55, 1.35, pop), uRandom);
+  reach *= mix(1.0, mix(0.88, 1.12, pop), rAmt * 1.8);
   float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
   body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
 
@@ -269,14 +269,8 @@ void main() {
       0.35 * (detail - 0.5) +
       0.25 * (fbm(ring * 6.0 + vec2(h * 4.0 - t * 1.8, t * 0.5)) - 0.5)
     );
-  // Random channel: discontinuous pops, not another sine.
-  float chaos =
-    1.0 +
-    uRandom * (
-      0.7 * (pop - 0.5) +
-      0.45 * (pop2 - 0.5) +
-      0.25 * step(0.82, pop) // occasional bright lick
-    );
+  // Soft random channel — no hard strobe pops.
+  float chaos = 1.0 + rAmt * (0.55 * (pop - 0.5) + 0.35 * (pop2 - 0.5));
 
   vec3 tipCol = vec3(1.0, 0.36, 0.05);
   vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
