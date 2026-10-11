@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=14", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=15", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
