@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=24", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=25", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -126,13 +126,13 @@ const LIMB_U = 0.62;
  * BackSide; irregular tongues all around — the Sun has no night side.
  * Numbered tries (FLAME_TRY) so we can refer to looks; temp panel tunes uniforms.
  */
-const FLAME_TRY = 24;
+const FLAME_TRY = 25;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
-/** Defaults for the temp flame panel — knobs that break arches / flat periods. */
+/** Defaults for the temp flame panel. Random = stochastic cells, not jitter on a form. */
 const FLAME_DEFAULTS = {
   speed: 0.24,
   warp: 0.85,
@@ -141,7 +141,7 @@ const FLAME_DEFAULTS = {
   contrast: 0.55,
   breath: 0.35,
   flicker: 0.55,
-  random: 0.35,
+  random: 0.65,
   intensity: ATMO_INTENSITY,
 };
 
@@ -197,13 +197,37 @@ float fbm(vec2 p) {
   return v;
 }
 
-// Soft-edged telegraph noise — random, but not a strobe.
-float crackle(vec2 cell, float time, float rate) {
-  float tick = floor(time * rate);
-  float a = hash21(cell + vec2(tick, 17.0));
-  float b = hash21(cell + vec2(tick + 1.0, 17.0));
-  float f = smoothstep(0.0, 1.0, fract(time * rate));
-  return mix(a, b, f);
+// One random draw per cell lifetime. Hold, then redraw — not a scrolling wave.
+float holdNoise(vec2 id, float time, float rate) {
+  float tick = floor(time * max(rate, 0.05));
+  return hash21(id + vec2(tick * 1.7, tick * 0.31 + 19.0));
+}
+
+// Independent tongue layer: cells birth/die with their own height & brightness.
+float stochasticFire(float ang, float h, float time, float rate, float cells, float sharpness) {
+  float u = (ang + 3.14159265) * 0.15915494309 * cells; // / 2π
+  float s = floor(u);
+  float f = fract(u);
+  // Blend two neighbors so there's no hard sector wall.
+  float n0 = holdNoise(vec2(s, cells), time, rate);
+  float n1 = holdNoise(vec2(s + 1.0, cells), time, rate);
+  float alive0 = holdNoise(vec2(s, cells + 40.0), time, rate * 0.83);
+  float alive1 = holdNoise(vec2(s + 1.0, cells + 40.0), time, rate * 0.83);
+  float hgt0 = mix(0.22, 1.05, holdNoise(vec2(s, cells + 80.0), time, rate * 0.71));
+  float hgt1 = mix(0.22, 1.05, holdNoise(vec2(s + 1.0, cells + 80.0), time, rate * 0.71));
+  float w0 = mix(1.2, 3.8, holdNoise(vec2(s, cells + 120.0), time, rate * 0.61));
+  float w1 = mix(1.2, 3.8, holdNoise(vec2(s + 1.0, cells + 120.0), time, rate * 0.61));
+  // Only some cells are "on" this lifetime — fire's sparseness.
+  float on0 = smoothstep(0.38, 0.62, alive0);
+  float on1 = smoothstep(0.38, 0.62, alive1);
+  float win0 = pow(max(1.0 - abs(f) * 2.0, 0.0), w0);
+  float win1 = pow(max(1.0 - abs(f - 1.0) * 2.0, 0.0), w1);
+  float tongue0 = on0 * n0 * win0 * pow(clamp(1.0 - h / max(hgt0, 1e-3), 0.0, 1.0), sharpness);
+  float tongue1 = on1 * n1 * win1 * pow(clamp(1.0 - h / max(hgt1, 1e-3), 0.0, 1.0), sharpness);
+  // Tip gutter: faster hold rate, tips only.
+  float tip = holdNoise(vec2(s + f, 200.0 + cells), time, rate * 2.4);
+  float body = tongue0 + tongue1;
+  return body * mix(0.75, 1.25, tip);
 }
 
 void main() {
@@ -214,68 +238,61 @@ void main() {
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
 
-  // Limb direction in the view plane. Use cos/sin so noise has no atan seam.
   vec3 limb = oc - rd * along;
   float ang = atan(limb.y, limb.x);
   float ca = cos(ang);
   float sa = sin(ang);
   float t = uTime * uSpeed;
   vec2 ring = vec2(ca, sa);
+  float R = clamp(uRandom, 0.0, 1.0);
 
-  // Slider 0–1.5 → gentle curve so low values stay usable.
-  float R = clamp(uRandom, 0.0, 1.5);
-  float rAmt = R * R * 0.22; // max ~0.5 influence at slider top
-  float sector = floor((ang + 3.14159265) / 6.2831853 * 24.0);
-  float band = floor(h * 5.0);
-  vec2 cell = vec2(sector, band);
-  float pop = crackle(cell, uTime, 3.2 + R * 2.8);
-  float pop2 = crackle(cell + vec2(31.0, 7.0), uTime * 1.15, 4.5 + R * 3.0);
-  float jitter = (pop - 0.5) * rAmt;
-  float snap = (pop2 - 0.5) * rAmt;
-
-  // Rising flame field on a warped circle. Mid-band breakup cuts long arches.
-  // Randomness nudges phase/reach — keeps the body, breaks the loop a little.
-  float rise = h * 2.6 - t * 0.95 + snap * 0.55;
-  float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22 + jitter));
-  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp + ring.yx * snap * 0.2;
-  float field = fbm(warped + vec2(rise, t * 0.28 + jitter * 0.8));
-  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9 + snap * 0.4, t * 0.2));
-  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45 + jitter * 0.5));
+  // --- Coherent path (form): only dominates when Random is low ---
+  float rise = h * 2.6 - t * 0.95;
+  float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
+  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp;
+  float field = fbm(warped + vec2(rise, t * 0.28));
+  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9, t * 0.2));
+  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45));
   field = mix(field, mid, 0.35 * uBreakup);
   field = mix(field, detail, uDetail);
-  field = mix(field, mix(field, pop, 0.35), rAmt * 1.6);
-
   float lo = mix(0.22, 0.4, 1.0 - uContrast);
   float hi = mix(0.85, 0.62, uContrast);
   float tongue = smoothstep(lo, hi, field);
-
   float reach = mix(0.34, 1.1, tongue);
-  reach *= mix(1.0, mix(0.88, 1.12, pop), rAmt * 1.8);
-  float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
-  body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
+  float coherent = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
+  coherent = pow(max(coherent, 0.0), mix(1.35, 0.4, tongue));
+  coherent *= 0.62 + 0.85 * tongue;
 
-  // Keep global breath weak; local flicker breaks flat stretches.
+  // --- Stochastic path (fire): independent cells that live and die ---
+  float rate = mix(1.1, 3.4, uSpeed / 0.7);
+  float cellsA = mix(10.0, 16.0, uBreakup);
+  float cellsB = mix(20.0, 36.0, uDetail);
+  float sharp = mix(1.4, 0.7, uContrast);
+  float fire =
+    0.65 * stochasticFire(ang, h, uTime, rate, cellsA, sharp) +
+    0.45 * stochasticFire(ang + 0.7, h, uTime * 1.21, rate * 1.35, cellsB, sharp * 0.9) +
+    0.30 * stochasticFire(ang - 1.1, h, uTime * 0.87, rate * 1.8, cellsB * 1.4, 1.1);
+  fire *= 1.0 + uFlicker * (holdNoise(vec2(floor(ang * 8.0), floor(h * 4.0)), uTime, rate * 2.0) - 0.5);
+
+  // Soft dim under-glow so the disk never goes naked.
+  float under = pow(clamp(1.0 - h, 0.0, 1.0), uFadePower + 0.9) * 0.28;
+
+  // Random crossfades systems: 0 = designed form, 1 = cell fire.
+  float body = mix(coherent, fire * 1.35, R);
+  body = max(body, under);
+
   float breath =
     1.0 +
-    uBreath * (
+    uBreath * (1.0 - R) * (
       0.1 * sin(t * 2.4 + ang * 1.6) +
-      0.08 * sin(t * 4.2 - ang * 3.8) +
-      0.12 * (fbm(ring * 1.3 + vec2(t * 0.65, 0.0)) - 0.5)
+      0.08 * sin(t * 4.2 - ang * 3.8)
     );
-  float local =
-    1.0 +
-    uFlicker * (
-      0.55 * (tongue - 0.5) +
-      0.35 * (detail - 0.5) +
-      0.25 * (fbm(ring * 6.0 + vec2(h * 4.0 - t * 1.8, t * 0.5)) - 0.5)
-    );
-  // Soft random channel — no hard strobe pops.
-  float chaos = 1.0 + rAmt * (0.55 * (pop - 0.5) + 0.35 * (pop2 - 0.5));
 
   vec3 tipCol = vec3(1.0, 0.36, 0.05);
-  vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
+  float tipMix = smoothstep(0.18, 0.95, h) * mix(0.3 + 0.7 * tongue, 0.55 + 0.45 * fire, R);
+  vec3 col = mix(uColor, tipCol, tipMix);
 
-  float glow = body * uIntensity * breath * local * chaos * (0.62 + 0.85 * tongue);
+  float glow = body * uIntensity * breath;
   glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
   gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
