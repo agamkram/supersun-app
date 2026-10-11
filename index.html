@@ -1207,7 +1207,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=25";
+    import { createSunGlobe } from "./sun.js?v=26";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1729,7 +1729,7 @@
 
       function paint() {
         const p = globe.getFlameParams();
-        title.textContent = `Flame F${p.try}`;
+        title.textContent = `Flame F${p.try} · R ${Number(p.random).toFixed(2)}`;
         for (const input of inputs) {
           const key = input.dataset.flame;
           if (!Number.isFinite(p[key])) continue;
@@ -1748,6 +1748,7 @@
 
       for (const input of inputs) {
         input.addEventListener("input", read);
+        input.addEventListener("change", read);
       }
       panel.addEventListener("pointerdown", (e) => e.stopPropagation());
       panel.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
