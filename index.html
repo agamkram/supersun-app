@@ -1082,7 +1082,7 @@
     <label><span class="k">Pattern</span><input type="range" data-flame="pattern" min="0" max="4" step="1"><span class="n">—</span></label>
     <div class="ft-pattern-name" id="ft-pattern-name">—</div>
     <label><span class="k">Intensity</span><input type="range" data-flame="intensity" min="0.2" max="1.4" step="0.01"><span class="n">—</span></label>
-    <p class="ft-hint">Aiming at the real AIA corona. P0 Filaments (default) · P1 Boil (old best) · P2 Streamers · P3 Loops · P4 Grain.</p>
+    <p class="ft-hint">P0 Filaments · P1 Boil · P2 Streamers · P3 Loops · P4 Grain. Halo shell is forced on so the corona cannot vanish.</p>
     <div class="ft-actions">
       <button type="button" id="ft-reset">Reset</button>
       <button type="button" id="ft-copy">Copy values</button>
@@ -1207,7 +1207,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=31";
+    import { createSunGlobe } from "./sun.js?v=32";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };

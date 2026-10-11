@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=31", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=32", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -126,10 +126,10 @@ const LIMB_U = 0.62;
  * radial filaments / streamers, bright active regions, fine living grain.
  * Boil kept only as A/B against that target.
  */
-const FLAME_TRY = 31;
-const ATMO_HEIGHT = 1.22;
-const ATMO_FADE = 0.7;
-const ATMO_INTENSITY = 0.82;
+const FLAME_TRY = 32;
+const ATMO_HEIGHT = 1.18;
+const ATMO_FADE = 0.75;
+const ATMO_INTENSITY = 0.85;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
 /** Family aimed at the real corona photo — not random novelty presets. */
@@ -191,42 +191,6 @@ float fbm(vec2 p) {
   return v;
 }
 
-// AIA-like limb: radial filaments + active belts + fine grain.
-// stretchA = angular frequency of strands; loopAmt curves strands near limb.
-vec3 coronaFilaments(float ang, float h, float time, float stretchA, float loopAmt, float grainAmt) {
-  float t = time;
-  // Slow active regions (bright tangled belts on the limb).
-  float active = fbm(vec2(ang * 1.15, t * 0.06));
-  active = smoothstep(0.38, 0.7, active);
-
-  // Strand coordinate: high in angle (thin threads), low in radius (long rays).
-  float warp = fbm(vec2(ang * 2.2, h * 0.9 + t * 0.08)) - 0.5;
-  float loopBend = loopAmt * active * (1.0 - h) * sin(ang * 5.5 + t * 0.15);
-  vec2 filUv = vec2(ang * stretchA + warp * 1.4 + loopBend * 2.5, h * 1.6 - t * 0.28);
-  float fil = fbm(filUv);
-  fil = pow(max(fil, 0.0), 1.7);
-
-  // Second finer thread layer.
-  float fil2 = fbm(vec2(ang * (stretchA * 1.7) - warp, h * 2.4 - t * 0.45));
-  fil2 = pow(max(fil2, 0.0), 2.1);
-
-  // Living grain (what Boil got right — keep it small and on the strands).
-  float grain = fbm(vec2(ang * 26.0 + t * 0.7, h * 14.0 - t * 1.4));
-  grain = 1.0 + grainAmt * (grain - 0.5);
-
-  // Jagged outer reach from filaments + active height.
-  float reach = mix(0.48, 1.18, clamp(0.35 * fil + 0.45 * active + 0.25 * fil2, 0.0, 1.0));
-  float env = pow(clamp(1.0 - h / max(reach, 1e-3), 0.0, 1.0), mix(1.55, 0.5, fil));
-
-  float body = env * (0.28 + 0.7 * fil + 0.4 * fil2 * active) * grain;
-  body *= mix(0.88, 1.4, active);
-  // Hot core right on the limb.
-  body += pow(clamp(1.0 - h, 0.0, 1.0), 3.2) * (0.22 + 0.25 * active);
-
-  float tongue = clamp(0.4 * fil + 0.6 * active, 0.0, 1.0);
-  return vec3(body, tongue, active);
-}
-
 void main() {
   vec3 rd = normalize(vWorldPos - cameraPosition);
   vec3 oc = cameraPosition - uPlanetCenter;
@@ -237,62 +201,64 @@ void main() {
 
   vec3 limb = oc - rd * along;
   float ang = atan(limb.y, limb.x);
-  float ca = cos(ang);
-  float sa = sin(ang);
-  vec2 ring = vec2(ca, sa);
+  vec2 ring = vec2(cos(ang), sin(ang));
   float P = clamp(floor(uPattern + 0.5), 0.0, 4.0);
 
-  float body = 0.0;
+  // Always-on limb shell — if this is missing, the shader failed.
+  float base = pow(max(1.0 - h, 0.0), uFadePower);
+
+  float body = base;
   float tongue = 0.5;
   float pulse = 1.0;
-  vec3 tipCol = vec3(1.0, 0.45, 0.08);
+  vec3 tipCol = vec3(1.0, 0.42, 0.08);
 
-  if (P < 0.5) {
-    // 0 Filaments — target look from the AIA 171 reference.
-    vec3 c = coronaFilaments(ang, h, uTime * 0.16, 13.0, 1.0, 0.55);
-    body = c.x;
-    tongue = c.y;
-    pulse = 0.94 + 0.08 * c.z;
-  } else if (P < 1.5) {
-    // 1 Boil — previous best, kept for A/B only.
+  if (P < 0.5 || P >= 1.5) {
+    // Filament family (0 Filaments, 2 Streamers, 3 Loops, 4 Grain).
+    float stretchA = 13.0;
+    float loopAmt = 1.0;
+    float grainAmt = 0.55;
+    float tScale = 0.16;
+    if (P >= 1.5 && P < 2.5) { stretchA = 18.0; loopAmt = 0.25; grainAmt = 0.3; tScale = 0.12; }
+    if (P >= 2.5 && P < 3.5) { stretchA = 10.0; loopAmt = 1.85; grainAmt = 0.4; tScale = 0.14; tipCol = vec3(1.0, 0.55, 0.12); }
+    if (P >= 3.5) { stretchA = 14.0; loopAmt = 0.7; grainAmt = 1.1; tScale = 0.2; }
+
+    float t = uTime * tScale;
+    float active = smoothstep(0.38, 0.7, fbm(vec2(ang * 1.15, t * 0.06)));
+    float warp = fbm(vec2(ang * 2.2, h * 0.9 + t * 0.08)) - 0.5;
+    float loopBend = loopAmt * active * (1.0 - h) * sin(ang * 5.5 + t * 0.15);
+    float fil = fbm(vec2(ang * stretchA + warp * 1.4 + loopBend * 2.5, h * 1.6 - t * 0.28));
+    fil = pow(max(fil, 0.0), 1.55);
+    float fil2 = fbm(vec2(ang * stretchA * 1.7 - warp, h * 2.4 - t * 0.45));
+    fil2 = pow(max(fil2, 0.0), 1.9);
+    float grain = 1.0 + grainAmt * (fbm(vec2(ang * 22.0 + t * 0.7, h * 12.0 - t * 1.3)) - 0.5);
+
+    // Soft shell always present; filaments carve brightness and ragged reach.
+    float reach = mix(0.75, 1.15, clamp(0.4 * fil + 0.4 * active, 0.0, 1.0));
+    float env = pow(clamp(1.0 - h / max(reach, 1e-3), 0.0, 1.0), mix(1.2, 0.55, fil));
+    body = max(base * 0.55, env * (0.35 + 0.65 * fil + 0.35 * fil2 * active) * grain);
+    body *= mix(0.92, 1.35, active);
+    tongue = clamp(0.45 * fil + 0.55 * active, 0.0, 1.0);
+    pulse = 0.94 + 0.1 * active;
+  } else {
+    // 1 Boil — A/B only.
     float t = uTime * 0.4;
     float w1 = fbm(ring * 2.2 + vec2(t * 0.7, h * 2.5));
     float w2 = fbm(ring * 3.8 - vec2(t * 0.55, h * 1.8));
     vec2 q = ring * 3.0 + vec2(w1 - 0.5, w2 - 0.5) * 1.8;
     float field = fbm(q + vec2(h * 3.5 - t * 1.4, t * 0.35));
     tongue = field;
-    body = pow(clamp(1.0 - h, 0.0, 1.0), mix(0.6, 1.8, 1.0 - field)) * (0.45 + 0.7 * field);
+    body = max(base * 0.5, pow(max(1.0 - h, 0.0), mix(0.6, 1.8, 1.0 - field)) * (0.45 + 0.7 * field));
     pulse = 0.85 + 0.25 * (w1 - 0.5);
-  } else if (P < 2.5) {
-    // 2 Streamers — longer, quieter radial rays (poles of the reference).
-    vec3 c = coronaFilaments(ang, h, uTime * 0.12, 18.0, 0.25, 0.3);
-    body = c.x * 1.05;
-    tongue = c.y;
-    pulse = 0.96 + 0.05 * c.z;
-  } else if (P < 3.5) {
-    // 3 Loops — stronger arched active regions (limb belts in the reference).
-    vec3 c = coronaFilaments(ang, h, uTime * 0.14, 10.0, 1.85, 0.4);
-    body = c.x * 1.08;
-    tongue = c.y;
-    pulse = 0.92 + 0.12 * c.z;
-    tipCol = vec3(1.0, 0.55, 0.12);
-  } else {
-    // 4 Grain — filament base with heavier living shimmer (Boil's good part).
-    vec3 c = coronaFilaments(ang, h, uTime * 0.2, 14.0, 0.7, 1.15);
-    body = c.x;
-    tongue = c.y;
-    pulse = 0.9 + 0.15 * (fbm(vec2(ang * 8.0, uTime * 0.9)) - 0.5);
   }
 
-  // Hot near the disk, deeper gold in the outer wisps — like the reference.
-  float hot = pow(clamp(1.0 - h, 0.0, 1.0), 1.8);
-  vec3 col = mix(tipCol, uColor, clamp(0.35 + 0.65 * hot, 0.0, 1.0));
-  col = mix(col, vec3(1.0, 0.92, 0.7), hot * tongue * 0.35);
+  float hot = pow(max(1.0 - h, 0.0), 1.6);
+  vec3 col = mix(tipCol, uColor, clamp(0.3 + 0.7 * hot, 0.0, 1.0));
+  col = mix(col, vec3(1.0, 0.92, 0.72), hot * tongue * 0.3);
 
   float glow = body * pulse * uIntensity;
-  glow *= pow(max(1.0 - h * 0.08, 0.0), uFadePower);
-  glow = max(glow, pow(max(1.0 - h, 0.0), 3.0) * uIntensity * 0.05);
-  gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
+  // Hard floor so the corona cannot disappear.
+  glow = max(glow, base * uIntensity * 0.35);
+  gl_FragColor = vec4(col * glow, 1.0);
 }
 `;
 
