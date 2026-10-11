@@ -1191,7 +1191,7 @@
       },
       wind: {
         title: "Solar wind",
-        body: "Charged particles streaming off the Sun. Typical is about 250 mi/s (400 km/s).",
+        body: "Plasma flowing out of the corona. Typical is about 250 mi/s (400 km/s).",
       },
       protons: {
         title: "Protons",
@@ -1382,7 +1382,7 @@
       }
       if (key === "wind" && Number.isFinite(windKms)) {
         const mis = windKms / 1.609344;
-        return `Charged particles streaming off the Sun. Now ${Math.round(mis)} mi/s (${Math.round(windKms)} km/s). Typical is about 250 mi/s (400 km/s).`;
+        return `Plasma flowing out of the corona. Now ${Math.round(mis)} mi/s (${Math.round(windKms)} km/s). Typical is about 250 mi/s (400 km/s).`;
       }
       return fallback;
     }
