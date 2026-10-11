@@ -1373,7 +1373,6 @@
     let lastDistAu = NaN;
     let windKms = NaN;
     const KM_PER_AU = 149597870.7;
-    const KMS_TO_MPH = 3600 / 1.609344;
 
     function factText(key, fallback) {
       if (key === "dist" && Number.isFinite(lastDistAu)) {
@@ -1454,8 +1453,7 @@
         if (k && Number.isFinite(Number(k.estimated_kp))) weather.kp = Number(k.estimated_kp).toFixed(2);
         if (w && Number.isFinite(Number(w.proton_speed))) {
           windKms = Number(w.proton_speed);
-          const mph = windKms * KMS_TO_MPH;
-          weather.wind = `${(mph / 1e6).toFixed(2)}M mph`;
+          weather.wind = `${Math.round(windKms / 1.609344)} mi/s`;
         }
         if (p) weather.protons = formatProtonPfu(p.flux);
       } catch (_) {}
