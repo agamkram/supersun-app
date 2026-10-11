@@ -116,18 +116,18 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=19", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=20", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
 
 /**
- * Corona as a slow flame shell.
- * BackSide; tongues rise all around — the Sun has no night side.
+ * Corona as a flickering flame shell.
+ * BackSide; irregular tongues all around — the Sun has no night side.
  */
-const ATMO_HEIGHT = 1.18;
+const ATMO_HEIGHT = 1.14;
 const ATMO_FADE = 0.75;
-const ATMO_INTENSITY = 0.7;
+const ATMO_INTENSITY = 0.72;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
 
 const ATMO_VERTEX = /* glsl */ `
@@ -153,33 +153,25 @@ float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
-// Value noise periodic in angle (cells around the circle) so there is no seam.
-float angNoise(float ang, float y, float cells) {
-  float x = fract(ang * 0.159154943 + 0.5);
-  vec2 p = vec2(x * cells, y);
+float vnoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
   vec2 u = f * f * (3.0 - 2.0 * f);
-  float x0 = mod(i.x, cells);
-  float x1 = mod(i.x + 1.0, cells);
-  float y0 = i.y;
-  float y1 = i.y + 1.0;
-  float a = hash21(vec2(x0, y0));
-  float b = hash21(vec2(x1, y0));
-  float c = hash21(vec2(x0, y1));
-  float d = hash21(vec2(x1, y1));
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
-float flame(float ang, float y) {
-  float w = angNoise(ang, y * 0.45, 4.0);
-  float a = ang + (w - 0.5) * 1.15;
-  float yy = y + (w - 0.5) * 0.65;
-  float n = 0.0;
-  n += 0.52 * angNoise(a, yy, 6.0);
-  n += 0.30 * angNoise(a + 1.7, yy * 2.05 + 3.0, 12.0);
-  n += 0.18 * angNoise(a - 0.9, yy * 4.1 + 8.0, 24.0);
-  return n;
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5;
+  v += a * vnoise(p);
+  return v;
 }
 
 void main() {
@@ -190,26 +182,37 @@ void main() {
   float span = max(uAtmoRadius - uPlanetRadius, 1e-4);
   float h = clamp((dist - uPlanetRadius) / span, 0.0, 1.0);
 
+  // Limb direction in the view plane. Use cos/sin so noise has no atan seam.
   vec3 limb = oc - rd * along;
   float ang = atan(limb.y, limb.x);
-  // Slow rise, almost no spin. Tips gutter a little faster than the body.
-  float rise = h * 2.15 - uTime * 0.18;
-  float n = flame(ang + uTime * 0.02, rise);
-  float lick = angNoise(ang, h * 3.0 - uTime * 0.42, 10.0);
+  float ca = cos(ang);
+  float sa = sin(ang);
+  float t = uTime * 0.38;
 
-  float base = pow(clamp(1.0 - h, 0.0, 1.0), uFadePower + 0.55);
-  float reach = mix(0.32, 0.9, n);
-  float tongue = pow(clamp(1.0 - h / max(reach, 1e-3), 0.0, 1.0), 0.8);
-  tongue *= smoothstep(0.02, 0.22, h);
+  // Rising flame field on a circle (seamless) × height.
+  float rise = h * 2.8 - t * 1.15;
+  vec2 ring = vec2(ca, sa);
+  float field = fbm(ring * 2.1 + vec2(rise, t * 0.35));
+  field = mix(field, fbm(ring * 4.6 + vec2(h * 3.2 - t * 1.5, -t * 0.55)), 0.45);
 
-  float pulse = 0.86 + 0.28 * (n - 0.5) + 0.1 * (lick - 0.5);
-  float edge = smoothstep(1.0, 0.82, h);
-  float glow = (base * (0.55 + 0.5 * n) + tongue * 0.7) * pulse * uIntensity * edge;
+  // Irregular reach — some tongues tall, some short.
+  float reach = mix(0.38, 1.08, clamp(field * 1.25, 0.0, 1.0));
+  float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
+  body = pow(max(body, 0.0), mix(1.25, 0.45, field));
 
-  vec3 hot = vec3(1.0, 0.96, 0.82);
-  vec3 ember = vec3(1.0, 0.34, 0.05);
-  vec3 col = mix(ember, uColor, smoothstep(0.0, 0.62, base));
-  col = mix(col, hot, clamp(base * n, 0.0, 1.0) * 0.45);
+  // Whole halo breathes like a fire (trig of ang is continuous).
+  float breath =
+    0.78 +
+    0.12 * sin(t * 3.2 + ang * 1.8) +
+    0.08 * sin(t * 5.8 - ang * 4.5) +
+    0.10 * (fbm(ring * 1.4 + vec2(t * 0.9, 0.0)) - 0.5);
+
+  // Hot gold near the limb, cooler orange at the tips.
+  vec3 tipCol = vec3(1.0, 0.38, 0.06);
+  vec3 col = mix(uColor, tipCol, smoothstep(0.2, 0.95, h) * (0.35 + 0.65 * field));
+
+  float glow = body * uIntensity * breath * (0.7 + 0.7 * field);
+  glow *= pow(max(1.0 - h * 0.15, 0.0), uFadePower);
   gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
 `;
