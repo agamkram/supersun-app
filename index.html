@@ -1191,7 +1191,7 @@
       },
       wind: {
         title: "Solar wind",
-        body: "Speed at Earth in mph and km/s. Typical is about 900,000 mph (400 km/s).",
+        body: "Charged particles streaming off the Sun. Typical is about 250 mi/s (400 km/s).",
       },
       protons: {
         title: "Protons",
@@ -1382,8 +1382,8 @@
         return `${(mi / 1e6).toFixed(1)} million miles, ${(km / 1e6).toFixed(1)} million km. ${lastDistAu.toFixed(3)} Astronomical Units.`;
       }
       if (key === "wind" && Number.isFinite(windKms)) {
-        const mph = Math.round(windKms * KMS_TO_MPH);
-        return `${mph.toLocaleString("en-US")} mph (${Math.round(windKms)} km/s). Typical is about 900,000 mph (400 km/s).`;
+        const mis = windKms / 1.609344;
+        return `Charged particles streaming off the Sun. Now ${Math.round(mis)} mi/s (${Math.round(windKms)} km/s). Typical is about 250 mi/s (400 km/s).`;
       }
       return fallback;
     }
