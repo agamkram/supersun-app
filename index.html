@@ -1018,6 +1018,12 @@
       margin: 0;
       accent-color: #ffc04a;
     }
+    #flame-tune .ft-pattern-name {
+      margin: 2px 0 6px;
+      font-size: 10px;
+      color: #ffe0a8;
+      letter-spacing: 0.03em;
+    }
     #flame-tune .ft-hint {
       margin: 6px 0 0;
       font-size: 8px;
@@ -1073,16 +1079,10 @@
       <div class="ft-title" id="ft-title">Flame F—</div>
       <button type="button" class="ft-hide" id="ft-hide" title="Hide panel">Hide</button>
     </div>
-    <label><span class="k">Speed</span><input type="range" data-flame="speed" min="0.05" max="0.7" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Warp</span><input type="range" data-flame="warp" min="0" max="1.6" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Detail</span><input type="range" data-flame="detail" min="0" max="1" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Breakup</span><input type="range" data-flame="breakup" min="0" max="1" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Contrast</span><input type="range" data-flame="contrast" min="0" max="1" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Breath</span><input type="range" data-flame="breath" min="0" max="1.5" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Flicker</span><input type="range" data-flame="flicker" min="0" max="1.5" step="0.01"><span class="n">—</span></label>
-    <label><span class="k">Random</span><input type="range" data-flame="random" min="0" max="1" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Pattern</span><input type="range" data-flame="pattern" min="0" max="9" step="1"><span class="n">—</span></label>
+    <div class="ft-pattern-name" id="ft-pattern-name">—</div>
     <label><span class="k">Intensity</span><input type="range" data-flame="intensity" min="0.2" max="1.4" step="0.01"><span class="n">—</span></label>
-    <p class="ft-hint">Halo always stays. Knobs reshape it. Random adds discontinuous pops on top — it does not replace the shell.</p>
+    <p class="ft-hint">Ten different fire systems. Pick a pattern first; once you like one, say the name and we’ll add refine knobs for that design only.</p>
     <div class="ft-actions">
       <button type="button" id="ft-reset">Reset</button>
       <button type="button" id="ft-copy">Copy values</button>
@@ -1207,7 +1207,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=27";
+    import { createSunGlobe } from "./sun.js?v=28";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1723,19 +1723,23 @@
         return;
       }
       const title = document.getElementById("ft-title");
+      const nameEl = document.getElementById("ft-pattern-name");
       const inputs = [...panel.querySelectorAll("input[data-flame]")];
-      const defaults = { ...globe.getFlameParams() };
-      delete defaults.try;
+      const defaults = { pattern: 0, intensity: globe.getFlameParams().intensity };
 
       function paint() {
         const p = globe.getFlameParams();
-        title.textContent = `Flame F${p.try} · R ${Number(p.random).toFixed(2)}`;
+        title.textContent = `Flame F${p.try}`;
+        if (nameEl) nameEl.textContent = `P${p.pattern} · ${p.name}`;
         for (const input of inputs) {
           const key = input.dataset.flame;
           if (!Number.isFinite(p[key])) continue;
           input.value = String(p[key]);
           const num = input.parentElement?.querySelector(".n");
-          if (num) num.textContent = Number(p[key]).toFixed(2);
+          if (num) {
+            num.textContent =
+              key === "pattern" ? String(p.pattern) : Number(p[key]).toFixed(2);
+          }
         }
       }
 
