@@ -116,7 +116,7 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=21", segments: 224 };
+const SURFACE = { map: "sun-2k.jpg?v=22", segments: 224 };
 
 /** The map is flat; this darkens the rim. */
 const LIMB_U = 0.62;
@@ -124,11 +124,25 @@ const LIMB_U = 0.62;
 /**
  * Corona as a flickering flame shell.
  * BackSide; irregular tongues all around — the Sun has no night side.
+ * Numbered tries (FLAME_TRY) so we can refer to looks; temp panel tunes uniforms.
  */
+const FLAME_TRY = 22;
 const ATMO_HEIGHT = 1.16;
 const ATMO_FADE = 0.75;
 const ATMO_INTENSITY = 0.74;
 const ATMO_COLOR = new THREE.Color(0xffc04a);
+
+/** Defaults for the temp flame panel — knobs that break arches / flat periods. */
+const FLAME_DEFAULTS = {
+  speed: 0.24,
+  warp: 0.85,
+  detail: 0.55,
+  breakup: 0.7,
+  contrast: 0.55,
+  breath: 0.35,
+  flicker: 0.55,
+  intensity: ATMO_INTENSITY,
+};
 
 const ATMO_VERTEX = /* glsl */ `
 varying vec3 vWorldPos;
@@ -147,6 +161,13 @@ uniform vec3 uPlanetCenter;
 uniform float uPlanetRadius;
 uniform float uAtmoRadius;
 uniform float uTime;
+uniform float uSpeed;
+uniform float uWarp;
+uniform float uDetail;
+uniform float uBreakup;
+uniform float uContrast;
+uniform float uBreath;
+uniform float uFlicker;
 varying vec3 vWorldPos;
 
 float hash21(vec2 p) {
@@ -187,36 +208,47 @@ void main() {
   float ang = atan(limb.y, limb.x);
   float ca = cos(ang);
   float sa = sin(ang);
-  float t = uTime * 0.26;
+  float t = uTime * uSpeed;
   vec2 ring = vec2(ca, sa);
 
-  // Rising flame field: warp the circle a little so tongues feel organic.
+  // Rising flame field on a warped circle. Mid-band breakup cuts long arches.
   float rise = h * 2.6 - t * 0.95;
-  float warp = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
-  vec2 warped = ring * 2.2 + (warp - 0.5) * 0.9;
+  float warpN = fbm(ring * 1.6 + vec2(rise * 0.55, t * 0.22));
+  vec2 warped = ring * 2.2 + (warpN - 0.5) * uWarp;
   float field = fbm(warped + vec2(rise, t * 0.28));
-  float detail = fbm(ring * 5.2 + vec2(h * 2.8 - t * 1.15, -t * 0.4));
-  field = mix(field, detail, 0.38);
-  // Sharper tongue contrast without changing the overall look.
-  float tongue = smoothstep(0.28, 0.78, field);
+  float mid = fbm(ring * mix(3.2, 7.5, uBreakup) + vec2(h * 2.2 - t * 0.9, t * 0.2));
+  float detail = fbm(ring * mix(5.0, 9.0, uBreakup) + vec2(h * 3.0 - t * 1.2, -t * 0.45));
+  field = mix(field, mid, 0.35 * uBreakup);
+  field = mix(field, detail, uDetail);
 
-  // Irregular reach — some tongues tall, some short.
+  float lo = mix(0.22, 0.4, 1.0 - uContrast);
+  float hi = mix(0.85, 0.62, uContrast);
+  float tongue = smoothstep(lo, hi, field);
+
   float reach = mix(0.34, 1.1, tongue);
   float body = 1.0 - smoothstep(0.0, max(reach, 1e-3), h);
   body = pow(max(body, 0.0), mix(1.35, 0.4, tongue));
 
-  // Soft whole-halo breath; local gutter on the tips.
+  // Keep global breath weak; local flicker breaks flat stretches.
   float breath =
-    0.82 +
-    0.08 * sin(t * 2.4 + ang * 1.6) +
-    0.06 * sin(t * 4.2 - ang * 3.8) +
-    0.12 * (fbm(ring * 1.3 + vec2(t * 0.65, h * 1.2)) - 0.5);
+    1.0 +
+    uBreath * (
+      0.1 * sin(t * 2.4 + ang * 1.6) +
+      0.08 * sin(t * 4.2 - ang * 3.8) +
+      0.12 * (fbm(ring * 1.3 + vec2(t * 0.65, 0.0)) - 0.5)
+    );
+  float local =
+    1.0 +
+    uFlicker * (
+      0.55 * (tongue - 0.5) +
+      0.35 * (detail - 0.5) +
+      0.25 * (fbm(ring * 6.0 + vec2(h * 4.0 - t * 1.8, t * 0.5)) - 0.5)
+    );
 
-  // Hot gold near the limb, cooler orange at the tips.
   vec3 tipCol = vec3(1.0, 0.36, 0.05);
   vec3 col = mix(uColor, tipCol, smoothstep(0.18, 0.95, h) * (0.3 + 0.7 * tongue));
 
-  float glow = body * uIntensity * breath * (0.62 + 0.85 * tongue);
+  float glow = body * uIntensity * breath * local * (0.62 + 0.85 * tongue);
   glow *= pow(max(1.0 - h * 0.12, 0.0), uFadePower);
   gl_FragColor = vec4(col * max(glow, 0.0), 1.0);
 }
@@ -419,6 +451,36 @@ export function createSunGlobe(canvas, options = {}) {
     applyEphemeris();
   }
 
+  const flameParams = { ...FLAME_DEFAULTS };
+
+  function applyFlameUniforms() {
+    if (!atmosphereMat) return;
+    const u = atmosphereMat.uniforms;
+    u.uSpeed.value = flameParams.speed;
+    u.uWarp.value = flameParams.warp;
+    u.uDetail.value = flameParams.detail;
+    u.uBreakup.value = flameParams.breakup;
+    u.uContrast.value = flameParams.contrast;
+    u.uBreath.value = flameParams.breath;
+    u.uFlicker.value = flameParams.flicker;
+    u.uIntensity.value = flameParams.intensity;
+  }
+
+  function setFlameParams( partial ) {
+    if (!partial || typeof partial !== "object") return getFlameParams();
+    for (const key of Object.keys(FLAME_DEFAULTS)) {
+      if (Number.isFinite(Number(partial[key]))) {
+        flameParams[key] = Number(partial[key]);
+      }
+    }
+    applyFlameUniforms();
+    return getFlameParams();
+  }
+
+  function getFlameParams() {
+    return { try: FLAME_TRY, ...flameParams };
+  }
+
   function ensureAtmosphere() {
     if (atmosphere) return;
     atmosphereMat = new THREE.ShaderMaterial({
@@ -426,12 +488,19 @@ export function createSunGlobe(canvas, options = {}) {
       fragmentShader: ATMO_FRAGMENT,
       uniforms: {
         uColor: { value: ATMO_COLOR.clone() },
-        uIntensity: { value: ATMO_INTENSITY },
+        uIntensity: { value: flameParams.intensity },
         uFadePower: { value: ATMO_FADE },
         uPlanetCenter: { value: new THREE.Vector3() },
         uPlanetRadius: { value: RADIUS },
         uAtmoRadius: { value: RADIUS * ATMO_HEIGHT },
         uTime: { value: 0 },
+        uSpeed: { value: flameParams.speed },
+        uWarp: { value: flameParams.warp },
+        uDetail: { value: flameParams.detail },
+        uBreakup: { value: flameParams.breakup },
+        uContrast: { value: flameParams.contrast },
+        uBreath: { value: flameParams.breath },
+        uFlicker: { value: flameParams.flicker },
       },
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
@@ -448,6 +517,7 @@ export function createSunGlobe(canvas, options = {}) {
     atmosphere.frustumCulled = false;
     atmosphere.scale.setScalar(ATMO_HEIGHT);
     sunGroup.add(atmosphere);
+    applyFlameUniforms();
   }
 
   function updateAtmosphereLight(nowMs) {
@@ -1208,6 +1278,8 @@ export function createSunGlobe(canvas, options = {}) {
     isOrbiting,
     getPhaseInfo,
     getObserver,
+    setFlameParams,
+    getFlameParams,
     isReady: () => ready,
     dispose() {
       disposed = true;

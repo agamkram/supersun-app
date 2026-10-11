@@ -962,6 +962,84 @@
       color: #e01820;
     }
 
+    /* Temp flame tuner — remove once the look is locked. */
+    #flame-tune {
+      position: fixed;
+      left: 8px;
+      bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      z-index: 40;
+      width: min(220px, calc(100vw - 16px));
+      padding: 8px 10px 10px;
+      border-radius: 10px;
+      background: rgba(8, 6, 4, 0.82);
+      border: 1px solid rgba(255, 190, 90, 0.28);
+      color: #f0d2a0;
+      font: 11px/1.25 Michroma, system-ui, sans-serif;
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      touch-action: none;
+      user-select: none;
+    }
+    #flame-tune[hidden] { display: none !important; }
+    #flame-tune .ft-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    #flame-tune .ft-title { font-size: 11px; color: #ffc04a; }
+    #flame-tune .ft-hide {
+      border: 0;
+      background: transparent;
+      color: #c9a57a;
+      font: inherit;
+      padding: 2px 4px;
+      cursor: pointer;
+    }
+    #flame-tune label {
+      display: grid;
+      grid-template-columns: 62px 1fr 28px;
+      align-items: center;
+      gap: 6px;
+      margin: 3px 0;
+      color: #d8b88a;
+    }
+    #flame-tune label span.k { font-size: 9px; opacity: 0.9; }
+    #flame-tune label span.n {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      font-size: 9px;
+      color: #ffe0a8;
+    }
+    #flame-tune input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #ffc04a;
+    }
+    #flame-tune .ft-hint {
+      margin: 6px 0 0;
+      font-size: 8px;
+      line-height: 1.35;
+      color: rgba(240, 210, 160, 0.65);
+    }
+    #flame-tune .ft-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 7px;
+    }
+    #flame-tune .ft-actions button {
+      flex: 1;
+      border: 1px solid rgba(255, 190, 90, 0.35);
+      background: rgba(40, 24, 8, 0.7);
+      color: #ffd089;
+      border-radius: 6px;
+      padding: 5px 4px;
+      font: inherit;
+      font-size: 9px;
+      cursor: pointer;
+    }
 
   </style>
   <script type="importmap">
@@ -989,6 +1067,26 @@
   </header>
 
   <p class="status" id="status" data-state="loading">Loading surface…</p>
+
+  <aside id="flame-tune" aria-label="Temporary flame controls">
+    <div class="ft-head">
+      <div class="ft-title" id="ft-title">Flame F—</div>
+      <button type="button" class="ft-hide" id="ft-hide" title="Hide panel">Hide</button>
+    </div>
+    <label><span class="k">Speed</span><input type="range" data-flame="speed" min="0.05" max="0.7" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Warp</span><input type="range" data-flame="warp" min="0" max="1.6" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Detail</span><input type="range" data-flame="detail" min="0" max="1" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Breakup</span><input type="range" data-flame="breakup" min="0" max="1" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Contrast</span><input type="range" data-flame="contrast" min="0" max="1" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Breath</span><input type="range" data-flame="breath" min="0" max="1.5" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Flicker</span><input type="range" data-flame="flicker" min="0" max="1.5" step="0.01"><span class="n">—</span></label>
+    <label><span class="k">Intensity</span><input type="range" data-flame="intensity" min="0.2" max="1.4" step="0.01"><span class="n">—</span></label>
+    <p class="ft-hint">Long arches → raise Detail / Breakup. Flat stretches → lower Breath, raise Flicker.</p>
+    <div class="ft-actions">
+      <button type="button" id="ft-reset">Reset</button>
+      <button type="button" id="ft-copy">Copy values</button>
+    </div>
+  </aside>
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
@@ -1108,7 +1206,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=21";
+    import { createSunGlobe } from "./sun.js?v=22";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1612,6 +1710,65 @@
       onPhase: showPhase,
     });
 
+    // Temp flame tuner — live knobs while we hunt the look.
+    (function wireFlameTune() {
+      const panel = document.getElementById("flame-tune");
+      if (!panel || !globe?.setFlameParams) return;
+      if (new URLSearchParams(location.search).has("flame")) {
+        localStorage.setItem("supersun-flame-tune", "1");
+      }
+      if (localStorage.getItem("supersun-flame-tune") === "0") {
+        panel.hidden = true;
+        return;
+      }
+      const title = document.getElementById("ft-title");
+      const inputs = [...panel.querySelectorAll("input[data-flame]")];
+      const defaults = { ...globe.getFlameParams() };
+      delete defaults.try;
+
+      function paint() {
+        const p = globe.getFlameParams();
+        title.textContent = `Flame F${p.try}`;
+        for (const input of inputs) {
+          const key = input.dataset.flame;
+          if (!Number.isFinite(p[key])) continue;
+          input.value = String(p[key]);
+          const num = input.parentElement?.querySelector(".n");
+          if (num) num.textContent = Number(p[key]).toFixed(2);
+        }
+      }
+
+      function read() {
+        const next = {};
+        for (const input of inputs) next[input.dataset.flame] = Number(input.value);
+        globe.setFlameParams(next);
+        paint();
+      }
+
+      for (const input of inputs) {
+        input.addEventListener("input", read);
+      }
+      panel.addEventListener("pointerdown", (e) => e.stopPropagation());
+      panel.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
+      document.getElementById("ft-hide")?.addEventListener("click", () => {
+        panel.hidden = true;
+        localStorage.setItem("supersun-flame-tune", "0");
+      });
+      document.getElementById("ft-reset")?.addEventListener("click", () => {
+        globe.setFlameParams(defaults);
+        paint();
+      });
+      document.getElementById("ft-copy")?.addEventListener("click", async () => {
+        const p = globe.getFlameParams();
+        const text = JSON.stringify(p, null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          console.log(text);
+        }
+      });
+      paint();
+    })();
 
     fetch("surface.json")
       .then((r) => r.json())
