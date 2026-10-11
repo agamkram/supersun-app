@@ -1143,51 +1143,51 @@
     const FACTS = {
       alt: {
         title: "Altitude",
-        body: "Height above the horizon. 0° is the rim, 90° overhead; negative is still down.",
+        body: "How high the Sun sits above the horizon. 0° is on the rim, 90° is overhead. A negative number means it has not risen, or has already set.",
       },
       az: {
         title: "Azimuth",
-        body: "Compass bearing. 0° north, 90° east, 180° south, 270° west.",
+        body: "Compass direction to the Sun. 0° is north, 90° east, 180° south, 270° west. It is generally east in the morning and west in the afternoon.",
       },
       cycle: {
         title: "Carrington",
-        body: "Days into this ~27.3-day turn as seen from Earth. The slider walks it; Live is today.",
+        body: "One numbered turn of the Sun as seen from Earth, about 27.3 days. The count is days into the current turn. The slider walks that turn; Live is today. The far side of the globe is the face that was toward us weeks ago.",
       },
       dist: {
         title: "Distance",
-        body: "Earth–Sun distance in miles and km. One Astronomical Unit is the average.",
+        body: "How far Earth is from the Sun. One Astronomical Unit is the average. Closest in early January, farthest in early July.",
       },
       size: {
         title: "Size",
-        body: "Apparent width in arcminutes. Tracks distance — a bit larger in January.",
+        body: "How wide the Sun looks. An arcminute is 1/60 of a degree. It is usually about 32′ across, a bit larger in January when Earth is closer.",
       },
       rise: {
         title: "Sunrise",
-        body: "When the Sun clears the horizon.",
+        body: "Local clock time when the Sun's upper edge crosses the horizon on the way up. It shifts through the year, and with where you sit inside the time zone.",
       },
       high: {
         title: "Solar noon",
-        body: "When the Sun is highest — solar noon, not always 12:00 on the clock.",
+        body: "When the Sun is highest today. That is solar noon, not always 12:00, because the time zone and the year's uneven clock move the hands.",
       },
       set: {
         title: "Sunset",
-        body: "When the Sun drops below the horizon.",
+        body: "Local clock time when the Sun's upper edge drops below the horizon. It shifts through the year, opposite sunrise.",
       },
       daylen: {
         title: "Day length",
-        body: "Hours from sunrise to sunset. Longer in summer, shorter in winter.",
+        body: "Hours from sunrise to sunset. Longest near the June solstice, shortest near the December solstice. Near the poles the Sun can stay up, or down, all day.",
       },
       xray: {
         title: "X-ray",
-        body: "GOES X-ray class. A–C are common; M and X are strong flares.",
+        body: "Soft X-rays from the hot corona, measured by GOES in geostationary orbit. Classes A, B, C, M, and X each step up by ten. A–C are common. M and X are strong flares.",
       },
       scales: {
         title: "R·S·G",
-        body: "NOAA R radio, S radiation, G geomagnetic. 0 quiet, 5 extreme.",
+        body: "NOAA's three storm scales, 0 quiet to 5 extreme. R is a radio blackout from X-rays on the sunlit side of Earth. S is a radiation storm of fast protons, a risk for satellites and polar flights. G is a geomagnetic storm, when the solar wind shakes Earth's magnetic field.",
       },
       kp: {
         title: "Kp",
-        body: "Planetary K index. 0–2 quiet; 5+ is a geomagnetic storm.",
+        body: "How disturbed Earth's magnetic field is, on a 0–9 scale, from magnetometers around the world. 0–2 is quiet. 5 and above is a geomagnetic storm. NOAA updates it about once a minute.",
       },
       wind: {
         title: "Solar wind",
@@ -1195,7 +1195,7 @@
       },
       protons: {
         title: "Protons",
-        body: "GOES >10 MeV flux. Quiet is well under 1; the S-scale storm starts near 10.",
+        body: "Fast protons above 10 MeV, counted by GOES. The number is how many pass through a square centimeter each second. Quiet is well under 1. NOAA's S-scale radiation storm starts near 10.",
       },
     };
 
@@ -1378,7 +1378,7 @@
       if (key === "dist" && Number.isFinite(lastDistAu)) {
         const km = lastDistAu * KM_PER_AU;
         const mi = km * MI_PER_KM;
-        return `${(mi / 1e6).toFixed(1)} million miles, ${(km / 1e6).toFixed(1)} million km. ${lastDistAu.toFixed(3)} Astronomical Units.`;
+        return `${(mi / 1e6).toFixed(1)} million miles, ${(km / 1e6).toFixed(1)} million km. That is ${lastDistAu.toFixed(3)} Astronomical Units. One Astronomical Unit is the average. Closest in early January, farthest in early July.`;
       }
       if (key === "wind" && Number.isFinite(windKms)) {
         const mis = windKms / 1.609344;
