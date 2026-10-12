@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=87" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=87" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=88" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=88" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -257,18 +257,9 @@
     }
 
     .loc-bar input,
-    .loc-bar button,
-    .loc-bar input[type="range"],
-    .loc-bar .cycle,
-    .loc-bar .cycle-controls,
-    .loc-bar .slider-track {
+    .loc-bar button {
       pointer-events: auto;
       touch-action: manipulation;
-    }
-
-    /* Horizontal scrub must win over page/globe pan on iPad Safari */
-    .loc-bar #phase-slider {
-      touch-action: pan-x;
     }
 
     :root {
@@ -548,44 +539,10 @@
       }
 
 
-      .cycle-date {
-        font-size: 13px;
-      }
-
       .live-btn {
         font-size: 11px;
         min-height: 1.4rem;
         padding: 0 0.55rem;
-      }
-
-      .slider-track {
-        height: 36px;
-        margin: -3px 0;
-        padding: 3px 0;
-        box-sizing: content-box;
-      }
-
-      #phase-slider {
-        height: 36px;
-      }
-
-      #phase-slider::-webkit-slider-runnable-track {
-        height: 7px;
-      }
-
-      #phase-slider::-webkit-slider-thumb {
-        width: 26px;
-        height: 26px;
-        margin-top: -9.5px;
-      }
-
-      #phase-slider::-moz-range-track {
-        height: 7px;
-      }
-
-      #phase-slider::-moz-range-thumb {
-        width: 26px;
-        height: 26px;
       }
     }
 
@@ -631,19 +588,6 @@
         font-size: 7px;
         min-width: 2rem;
         padding: 0 0.25rem;
-      }
-
-
-      .cycle {
-        padding: 0.06rem 0.22rem 0.02rem;
-        gap: 0.06rem;
-      }
-    }
-
-    /* Phone portrait: trim space under slider / Live row */
-    @media (pointer: coarse) and (max-width: 599px) {
-      .cycle {
-        padding-bottom: 1px;
       }
     }
 
@@ -759,98 +703,6 @@
     }
 
 
-    .cycle {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 0.1rem 0.28rem 0.1rem;
-      display: grid;
-      gap: 0.08rem;
-      flex: 0 0 auto;
-      position: relative;
-      z-index: 2;
-    }
-
-    .cycle-date {
-      font-family: var(--font);
-      font-size: 11px;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.01em;
-      color: var(--text);
-      line-height: 1.05;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      min-width: 0;
-    }
-
-    /* Slider shortened; Live sits after it in the freed width */
-    .cycle-controls {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      min-width: 0;
-    }
-
-    .slider-track {
-      position: relative;
-      flex: 1 1 auto;
-      min-width: 0;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      margin: -2px 0;
-      padding: 2px 0;
-      box-sizing: content-box;
-    }
-
-    #phase-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 100%;
-      height: 28px;
-      margin: 0;
-      background: transparent;
-      cursor: pointer;
-      pointer-events: auto;
-      touch-action: pan-x;
-    }
-
-    #phase-slider::-webkit-slider-runnable-track {
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(200, 212, 232, 0.28);
-    }
-
-    #phase-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 20px;
-      height: 20px;
-      margin-top: -7px;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: #e8edf7;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-    }
-
-    #phase-slider::-moz-range-track {
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(200, 212, 232, 0.28);
-      border: none;
-    }
-
-    #phase-slider::-moz-range-thumb {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: #e8edf7;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-    }
-
     .live-btn {
       flex: 0 0 auto;
       border: 1px solid var(--line);
@@ -905,8 +757,6 @@
       --line: #4a0808;
       --hi: #e02028;
       --panel: rgba(10, 0, 0, 0.94);
-      --red-track: #2e0606;
-      --red-thumb: #a01018;
       background: #030000;
       color: var(--text);
       color-scheme: dark;
@@ -926,8 +776,7 @@
       background: transparent;
     }
 
-    body.is-red-mode .metrics-panel,
-    body.is-red-mode .cycle {
+    body.is-red-mode .metrics-panel {
       border-color: #3a0c0c;
       background: rgba(40, 4, 4, 0.45);
     }
@@ -944,67 +793,6 @@
     body.is-red-mode .live-btn.is-preview {
       background: rgba(70, 10, 10, 0.55);
       border-color: #551010;
-    }
-
-    body.is-red-mode #phase-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      accent-color: #6a1010;
-      background: transparent;
-      color: #6a1010;
-    }
-
-    /* WebKit / Blink range thumb stays white unless styled explicitly */
-    body.is-red-mode #phase-slider::-webkit-slider-runnable-track {
-      height: 8px;
-      border-radius: 4px;
-      background: var(--red-track);
-    }
-
-    body.is-red-mode #phase-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 28px;
-      height: 28px;
-      margin-top: -10px;
-      border-radius: 50%;
-      border: 1px solid #4a0c0c;
-      background: var(--red-thumb);
-      box-shadow: none;
-    }
-
-    body.is-red-mode #phase-slider::-moz-range-track {
-      height: 8px;
-      border-radius: 4px;
-      background: var(--red-track);
-      border: none;
-    }
-
-    body.is-red-mode #phase-slider::-moz-range-thumb {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      border: 1px solid #4a0c0c;
-      background: var(--red-thumb);
-      box-shadow: none;
-    }
-
-    @media (pointer: coarse) and (min-width: 600px) and (min-height: 600px) {
-      body.is-red-mode #phase-slider::-webkit-slider-runnable-track {
-        height: 10px;
-      }
-      body.is-red-mode #phase-slider::-webkit-slider-thumb {
-        width: 44px;
-        height: 44px;
-        margin-top: -17px;
-      }
-      body.is-red-mode #phase-slider::-moz-range-track {
-        height: 10px;
-      }
-      body.is-red-mode #phase-slider::-moz-range-thumb {
-        width: 44px;
-        height: 44px;
-      }
     }
 
     body.is-red-mode .build-mark {
@@ -1128,7 +916,7 @@
   </div>
 
   <header class="chrome">
-    <p class="build-mark" id="build-mark">c87 j87</p>
+    <p class="build-mark" id="build-mark">c88 j88</p>
     <h1 class="app-title">SuperSun</h1>
   </header>
 
@@ -1248,7 +1036,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=87";
+    import { createSunGlobe } from "./sun.js?v=88";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1421,7 +1209,7 @@
       return 0;
     }
 
-    /** Inverse: slider phase → wall time inside the bake window. */
+    /** Inverse: scrub phase → wall time inside the bake window. */
     function dateFromCyclePhase(targetPhase) {
       const g = window.__sunGlobe;
       if (g?.dateFromMoviePhase01) return g.dateFromMoviePhase01(targetPhase);

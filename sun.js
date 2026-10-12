@@ -1,7 +1,7 @@
 /**
  * Hi-res Sun — AIA 171 Carrington loop on a starfield.
- * 1-finger / drag / slider: scrub Carrington frames (face-on)
- * Orbit: slow camera yaw (~100s) + even face beats (own clock; not slider/metrics).
+ * 1-finger drag: scrub Carrington frames (face-on)
+ * Orbit: slow camera yaw (~100s) + even face beats (own clock; parked metrics stay).
  * 2fs pan · pinch zoom · Live/home reset
  */
 import * as THREE from "three";
@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=87",
-  poster: "carrington-171-poster.jpg?v=87",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=87`,
+  meta: "frames.json?v=88",
+  poster: "carrington-171-poster.jpg?v=88",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=88`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -372,7 +372,7 @@ export function createSunGlobe(canvas, options = {}) {
   let frameCount = 0;
   let frameIndex = -1;
   let moviePhase01 = 0;
-  /** Visual Carrington phase while Orbit runs — never writes slider/metrics. */
+  /** Visual Carrington phase while Orbit runs — never writes parked metrics. */
   let orbitPhase01 = 0;
   let ready = false;
   let disposed = false;
@@ -401,7 +401,7 @@ export function createSunGlobe(canvas, options = {}) {
   let lastAnimMs = 0;
   /** Flick inertia: phase units (0–1) per second. */
   let scrubVel = 0;
-  /** Mild coast only — slider has none; old 1.8 turns/s felt like many Carringtons. */
+  /** Mild coast only — old 1.8 turns/s felt like many Carringtons. */
   const SCRUB_FRICTION = 6.0;
   const SCRUB_FLICK_MAX = 0.22;
   let phaseDirty = false;
@@ -599,7 +599,7 @@ export function createSunGlobe(canvas, options = {}) {
     atmosphereMat.uniforms.uAtmoRadius.value = RADIUS * ATMO_HEIGHT * g;
     const t = typeof nowMs === "number" ? nowMs : performance.now();
     atmosphereMat.uniforms.uTime.value = t * 0.001;
-    // Re-push knobs every frame so a pre-mesh slider move still lands.
+    // Re-push knobs every frame so a pre-mesh tweak still lands.
     applyFlameUniforms();
   }
 
@@ -611,7 +611,7 @@ export function createSunGlobe(canvas, options = {}) {
     return p;
   }
 
-  /** Parked / slider phase — keeps 1.0 at the end (no snap to 0). */
+  /** Parked phase — keeps 1.0 at the end (no snap to 0). */
   function clampPhase01(p) {
     return THREE.MathUtils.clamp(Number(p) || 0, 0, 1);
   }
@@ -697,7 +697,7 @@ export function createSunGlobe(canvas, options = {}) {
         if (Number.isFinite(Number(meta.durationSec))) {
           MOVIE.durationSec = Number(meta.durationSec);
         }
-        // Single source of truth for Live/slider ↔ plate mapping.
+        // Single source of truth for Live/scrub ↔ plate mapping.
         const t0 = Date.parse(meta.start);
         const t1 = Date.parse(meta.end);
         if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) {
@@ -803,7 +803,7 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   /**
-   * Parked Carrington phase (slider / Live / metrics). Orbit uses orbitPhase01
+   * Parked Carrington phase (scrub / Live / metrics). Orbit uses orbitPhase01
    * and does not stop when this changes.
    */
   function setCyclePhase(p, opts = {}) {
@@ -1084,7 +1084,7 @@ export function createSunGlobe(canvas, options = {}) {
 
   /**
    * iPad bottom-edge lift (CSS px). The metric box uses the same
-   * --ipad-gesture-lift, so the Sun and the slider rise together.
+   * --ipad-gesture-lift, so the Sun and the bottom panel rise together.
    */
   function ipadGestureLiftPx() {
     if (typeof document === "undefined") return 0;
@@ -1394,7 +1394,7 @@ export function createSunGlobe(canvas, options = {}) {
       oneFinger = { x, y, sx: x, sy: y, t0: Date.now(), moved: false };
     } else {
       fireTapIfAny(oneFinger);
-      // No flick coast — match the slider (stops when you stop).
+      // No flick coast — stops when you stop.
       scrubVel = 0;
       twoFinger = null;
       oneFinger = null;
@@ -1611,7 +1611,7 @@ export function createSunGlobe(canvas, options = {}) {
     return orbiting;
   }
 
-  /** True when the plate is showing the parked (slider/Live) phase frame. */
+  /** True when the plate is showing the parked (scrub/Live) phase frame. */
   function isParkedFramePainted() {
     if (frameCount < 1 || frameIndex < 0) return false;
     const n = Math.max(frameCount, 1);
