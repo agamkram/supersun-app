@@ -1,7 +1,7 @@
 /**
  * Hi-res Sun — AIA 171 Carrington loop on a starfield.
- * 1-finger drag: scrub Carrington frames (face-on)
- * Orbit: slow camera yaw (~100s) + even face beats (own clock; parked metrics stay).
+ * 1-finger drag: scrub Carrington frames (works during Orbit too)
+ * Orbit: slow camera yaw (~100s) + even face beats; When tracks the loop.
  * 2fs pan · pinch zoom · Live/home reset
  */
 import * as THREE from "three";
@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=89",
-  poster: "carrington-171-poster.jpg?v=89",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=89`,
+  meta: "frames.json?v=90",
+  poster: "carrington-171-poster.jpg?v=90",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=90`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -372,7 +372,7 @@ export function createSunGlobe(canvas, options = {}) {
   let frameCount = 0;
   let frameIndex = -1;
   let moviePhase01 = 0;
-  /** Visual Carrington phase while Orbit runs — never writes parked metrics. */
+  /** Visual Carrington phase while Orbit runs (also drives When). */
   let orbitPhase01 = 0;
   let ready = false;
   let disposed = false;
@@ -802,9 +802,16 @@ export function createSunGlobe(canvas, options = {}) {
     await Promise.all(Array.from({ length: conc }, () => worker()));
   }
 
+  /** Sync parked phase + When from the Orbit playhead. */
+  function adoptOrbitPhase() {
+    syncOrbitPhase();
+    moviePhase01 = clampPhase01(orbitPhase01);
+    when = phaseToDate(moviePhase01);
+  }
+
   /**
-   * Parked Carrington phase (scrub / Live / metrics). Orbit uses orbitPhase01
-   * and does not stop when this changes.
+   * Parked Carrington phase (scrub / Live / metrics). While Orbit runs, face
+   * follows orbitFrame; setCyclePhase only updates parked metrics.
    */
   function setCyclePhase(p, opts = {}) {
     if (!opts.fromOrbit) scrubVel = 0;
@@ -833,17 +840,34 @@ export function createSunGlobe(canvas, options = {}) {
     return Math.max(width || window.innerWidth || 1, 1);
   }
 
-  /** Drag/flick through the Carrington turn. dx>0 (drag right) advances. */
+  /** Drag through the Carrington turn. dx>0 (drag right) advances. Works in Orbit. */
   function scrubMovieByPx(dx, sampleDtMs) {
     if (!Number.isFinite(dx) || dx === 0) return;
-    if (orbiting) return; // Orbit runs until stopped — don't fight the face clock.
     const span = scrubSpanPx();
-    moviePhase01 = wrapPhase01(moviePhase01 + dx / span);
+    const dPhase = dx / span;
+    if (orbiting) {
+      // Reposition Orbit playhead; clock keeps cutting from here.
+      const n = Math.max(frameCount, 1);
+      orbitPhase01 = wrapPhase01(orbitPhase01 + dPhase);
+      orbitFrame =
+        n > 1
+          ? Math.min(n - 1, Math.max(0, Math.round(orbitPhase01 * (n - 1))))
+          : 0;
+      syncOrbitPhase();
+      adoptOrbitPhase();
+      orbitHold = 0;
+      paintFrameIndex(orbitFrame, true);
+      ensureOrbitAhead();
+      phaseDirty = true;
+      if (typeof onScrub === "function") onScrub();
+      return;
+    }
+    moviePhase01 = wrapPhase01(moviePhase01 + dPhase);
     when = phaseToDate(moviePhase01);
     showFrameAtPhase(moviePhase01);
     phaseDirty = true;
     if (sampleDtMs > 0) {
-      const v = dx / span / (sampleDtMs / 1000);
+      const v = dPhase / (sampleDtMs / 1000);
       scrubVel = THREE.MathUtils.clamp(v, -SCRUB_FLICK_MAX, SCRUB_FLICK_MAX);
     }
     if (typeof onScrub === "function") onScrub();
@@ -1596,14 +1620,15 @@ export function createSunGlobe(canvas, options = {}) {
         orbitClock = true;
         orbitHold = 0;
       }
+      // When tracks the face from the first Orbit plate.
+      adoptOrbitPhase();
+      applyEphemeris();
     } else {
       orbitFaceReady = false;
       orbitClock = false;
       orbitHold = 0;
       // Stay on the Orbit face — adopt it as the new parked phase.
-      syncOrbitPhase();
-      moviePhase01 = clampPhase01(orbitPhase01);
-      when = phaseToDate(moviePhase01);
+      adoptOrbitPhase();
       paintFrameIndex(orbitFrame, true);
       applyEphemeris();
     }
@@ -1641,7 +1666,7 @@ export function createSunGlobe(canvas, options = {}) {
     let advanced = false;
     if (orbiting && dt > 0) {
       // Stars: slow (~100s), continuous. Face: equal holds, one plate per beat.
-      // orbitPhase01 only — parked moviePhase01 / metrics stay put.
+      // When / metrics follow orbitPhase01.
       readSpherical();
       spherical.theta -= ORBIT_RAD_PER_SEC * dt;
       writeCamera();
@@ -1664,9 +1689,10 @@ export function createSunGlobe(canvas, options = {}) {
               orbitHold -= period;
               if (orbitHold >= period) orbitHold = 0;
               orbitFrame = next;
-              syncOrbitPhase();
+              adoptOrbitPhase();
               paintFrameIndex(orbitFrame);
               ensureOrbitAhead();
+              phaseDirty = true;
             } else {
               orbitHold = period;
               loadFrame(next);

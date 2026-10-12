@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=89" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=89" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=90" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=90" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -916,7 +916,7 @@
   </div>
 
   <header class="chrome">
-    <p class="build-mark" id="build-mark">c89 j89</p>
+    <p class="build-mark" id="build-mark">c90 j90</p>
     <h1 class="app-title">SuperSun</h1>
   </header>
 
@@ -1036,7 +1036,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=89";
+    import { createSunGlobe } from "./sun.js?v=90";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1500,6 +1500,11 @@
       onPhase: showPhase,
       onOrbitChange(on) {
         setOrbitUI(on);
+        if (on) {
+          previewMode = true;
+          setLiveUI();
+          showPhase(globe.getPhaseInfo());
+        }
       },
       onScrub() {
         previewMode = true;
