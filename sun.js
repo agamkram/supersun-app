@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=84",
-  poster: "carrington-171-poster.jpg?v=84",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=84`,
+  meta: "frames.json?v=85",
+  poster: "carrington-171-poster.jpg?v=85",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=85`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   durationSec: 12,
@@ -1080,12 +1080,33 @@ export function createSunGlobe(canvas, options = {}) {
     return measureCssLength("0.25in", 24);
   }
 
+  /** Same tablet test as the first-paint class in index.html. */
+  function syncTabletClass() {
+    if (typeof document === "undefined") return;
+    document.documentElement.classList.toggle("is-tablet", isTabletDisplay());
+  }
+
+  /**
+   * iPad bottom-edge lift (CSS px). The metric box uses the same
+   * --ipad-gesture-lift, so the Sun and the slider rise together.
+   */
+  function ipadGestureLiftPx() {
+    if (typeof document === "undefined") return 0;
+    syncTabletClass();
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ipad-gesture-lift")
+      .trim();
+    if (!raw || raw === "0" || raw === "0px") return 0;
+    return measureCssLength(raw, 0);
+  }
+
   /** CSS Y so home Sun sits in the upper safe band (above bottom info), not mid-screen. */
   function homeScreenOffsetY() {
     const pads = readHomePadsPx();
     // Safe-band center is above the viewport center when bottom pad > top pad.
     // CSS translateY: negative = content moves up. Extra 3/8" on startup.
-    return (pads.top - pads.bottom) / 2 - homeExtraUpPx() + homeLowerBiasPx();
+    // Gesture lift matches the loc-bar bottom offset (full amount, not half).
+    return (pads.top - pads.bottom) / 2 - homeExtraUpPx() + homeLowerBiasPx() - ipadGestureLiftPx();
   }
 
   function applyHomeFraming() {

@@ -24,6 +24,13 @@ def write(n: int) -> None:
     index2, c1 = re.subn(r"\./sun\.js\?v=\d+", f"./sun.js?v={n}", index)
     if c1 != 1:
         raise SystemExit(f"index script query count {c1}")
+    index2, cmark = re.subn(
+        r'(id="build-mark">)c\d+ j\d+',
+        rf"\1c{n} j{n}",
+        index2,
+    )
+    if cmark != 1:
+        raise SystemExit(f"build-mark count {cmark}")
     index2 = re.sub(
         r"carrington-171-poster\.jpg\?v=\d+",
         f"carrington-171-poster.jpg?v={n}",
@@ -68,6 +75,8 @@ def main() -> None:
         index = INDEX.read_text()
         if f"./sun.js?v={n}" not in index:
             raise SystemExit(f"v{n} is not consistent in index")
+        if f'id="build-mark">c{n} j{n}' not in index:
+            raise SystemExit(f"v{n} build-mark missing in index")
         if f"frames.json?v={n}" not in sun:
             raise SystemExit(f"v{n} frames.json missing in sun.js")
         print(f"v{n}")
