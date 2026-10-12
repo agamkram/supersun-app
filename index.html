@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=86" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=86" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=87" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=87" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -290,11 +290,31 @@
 
     .m-grid {
       display: grid;
-      /* Alt · Az · Carrington · Dist · Size */
-      grid-template-columns: 0.95fr 0.95fr 1.2fr 1.05fr 0.85fr;
+      /* When · Live · Carrington · Dist · Size */
+      grid-template-columns: 1.55fr 0.75fr 1.15fr 1.05fr 0.85fr;
       grid-auto-rows: var(--m-row-h);
       gap: 0;
       pointer-events: none;
+    }
+
+    .m-cell-when {
+      pointer-events: none;
+    }
+
+    .m-cell-live {
+      padding: 1px;
+      justify-content: center;
+      align-items: stretch;
+      pointer-events: auto;
+    }
+
+    .m-cell-live .live-btn {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border-radius: 4px;
+      padding: 0 0.25rem;
+      font-size: 9px;
     }
 
     /* Space weather: X-ray + R·S·G a touch wider */
@@ -484,7 +504,11 @@
       }
 
       .m-grid {
-        grid-template-columns: 0.95fr 0.95fr 1.2fr 1.05fr 0.85fr;
+        grid-template-columns: 1.55fr 0.75fr 1.15fr 1.05fr 0.85fr;
+      }
+
+      .m-cell-live .live-btn {
+        font-size: 10px;
       }
 
       .m-grid-3 {
@@ -1104,7 +1128,7 @@
   </div>
 
   <header class="chrome">
-    <p class="build-mark" id="build-mark">c86 j86</p>
+    <p class="build-mark" id="build-mark">c87 j87</p>
     <h1 class="app-title">SuperSun</h1>
   </header>
 
@@ -1127,7 +1151,7 @@
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
-      <!-- Row order: rise/high/set + tools, alt/az/Carrington, space weather -->
+      <!-- Row order: rise/high/set + tools, when/Live/Carrington, space weather -->
       <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset day length and display controls">
         <button type="button" class="m-cell m-cell-fact" data-fact="rise" title="Tap for explanation">
           <div class="k">Sunrise</div>
@@ -1167,14 +1191,13 @@
         </div>
       </div>
       <div class="m-grid" aria-label="Solar metrics">
-        <button type="button" class="m-cell m-cell-fact" data-fact="alt" title="Tap for explanation">
-          <div class="k">Altitude</div>
-          <div class="v hi" id="m-alt">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="az" title="Tap for explanation">
-          <div class="k">Azimuth</div>
-          <div class="v" id="m-az">—</div>
-        </button>
+        <div class="m-cell m-cell-when" aria-label="Face date and time">
+          <div class="k">When</div>
+          <div class="v sm" id="cycle-date">—</div>
+        </div>
+        <div class="m-cell m-cell-live">
+          <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
+        </div>
         <button type="button" class="m-cell m-cell-fact" data-fact="cycle" title="Tap for explanation">
           <div class="k">Carrington</div>
           <div class="v sm" id="m-cycle">—</div>
@@ -1211,24 +1234,6 @@
         </button>
       </div>
     </div>
-
-    <div class="cycle">
-      <div class="cycle-date" id="cycle-date">—</div>
-      <div class="cycle-controls">
-        <div class="slider-track">
-          <input
-            type="range"
-            id="phase-slider"
-            min="0"
-            max="1000"
-            value="0"
-            step="1"
-            aria-label="Carrington rotation"
-          />
-        </div>
-        <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
-      </div>
-    </div>
   </div>
 
   <!-- Outside .loc-bar: parent pointer-events:none blocks full-screen overlay taps -->
@@ -1243,7 +1248,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=86";
+    import { createSunGlobe } from "./sun.js?v=87";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1253,13 +1258,10 @@
 
     const canvas = document.getElementById("sun-canvas");
     const status = document.getElementById("status");
-    const phaseSlider = document.getElementById("phase-slider");
     const cycleDate = document.getElementById("cycle-date");
     const liveBtn = document.getElementById("live-btn");
 
     const el = {
-      alt: document.getElementById("m-alt"),
-      az: document.getElementById("m-az"),
       cycle: document.getElementById("m-cycle"),
       dist: document.getElementById("m-dist"),
       size: document.getElementById("m-size"),
@@ -1276,17 +1278,9 @@
 
 
     const FACTS = {
-      alt: {
-        title: "Altitude",
-        body: "How high the Sun sits above the horizon. 0° is on the rim, 90° is overhead. A negative number means it has not risen, or has already set.",
-      },
-      az: {
-        title: "Azimuth",
-        body: "Compass direction to the Sun. 0° is north, 90° east, 180° south, 270° west. It is generally east in the morning and west in the afternoon.",
-      },
       cycle: {
         title: "Carrington",
-        body: "One rotation of the Sun as seen from Earth, about 27.3 days. The count is days into the current rotation. The slider walks that rotation; Live is today. The far side of the globe is the face that was toward us weeks ago.",
+        body: "One rotation of the Sun as seen from Earth, about 27.3 days. The count is days into the current rotation. Swipe the Sun to walk that rotation; Live is today. The far side of the globe is the face that was toward us weeks ago.",
       },
       dist: {
         title: "Distance",
@@ -1369,7 +1363,6 @@
     factScrim?.addEventListener("click", onFactDismiss);
 
     let previewMode = false;
-    let previewRaf = 0;
     let metricsRaf = 0;
 
     function fmtTime(date) {
@@ -1447,8 +1440,6 @@
       const lat = Number(info.lat);
       const lon = Number(info.lon);
       const phase01 = Number(info.phase01);
-      let alt = NaN;
-      let az = NaN;
       let distKm = NaN;
       let ang = NaN;
       try {
@@ -1456,13 +1447,6 @@
         const vec = A.GeoVector(A.Body.Sun, time, true);
         distKm = Math.hypot(vec.x, vec.y, vec.z) * A.KM_PER_AU;
         ang = angArcminFromDistKm(distKm);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          const obs = new A.Observer(lat, lon, 0);
-          const eq = A.Equator(A.Body.Sun, time, obs, true, true);
-          const hor = A.Horizon(time, obs, eq.ra, eq.dec, "normal");
-          alt = hor.altitude;
-          az = hor.azimuth;
-        }
       } catch (_) {}
 
       let rise = null;
@@ -1494,8 +1478,6 @@
       }
 
       return {
-        alt,
-        az,
         phase01,
         cycleDay: (Number.isFinite(phase01) ? phase01 : livePhase01(when)) * ROTATION_DAYS,
         distAu: distKm / A.KM_PER_AU,
@@ -1602,10 +1584,6 @@
     function paintMetrics(info) {
       const m = computeMetrics(info);
       if (!m) return;
-      // Keep the Carrington slider glued to the visible frame (drag + Live).
-      if (Number.isFinite(m.phase01)) syncSliderToPhase01(m.phase01);
-      el.alt.textContent = Number.isFinite(m.alt) ? `${Math.round(m.alt)}°` : "—";
-      el.az.textContent = Number.isFinite(m.az) ? `${Math.round(m.az)}°` : "—";
       el.cycle.textContent = `${m.cycleDay.toFixed(1)}/${ROTATION_DAYS.toFixed(1)}`;
       lastDistAu = m.distAu;
       el.dist.textContent = Number.isFinite(m.distAu) ? `${m.distAu.toFixed(3)} AU` : "—";
@@ -1614,7 +1592,7 @@
       el.high.textContent = fmtTime(m.high);
       el.set.textContent = fmtTime(m.set);
       el.daylen.textContent = Number.isFinite(m.dayLenHr) ? `${m.dayLenHr.toFixed(1)} hr` : "—";
-      cycleDate.textContent = fmtDateTime(m.when);
+      if (cycleDate) cycleDate.textContent = fmtDateTime(m.when);
       updateSpaceWeather(false);
     }
 
@@ -1638,15 +1616,6 @@
       liveBtn.textContent = previewMode ? "Use live" : "Live";
     }
 
-    /** Put slider thumb at phase 0…1 (new→new). Matches cycle-day metric. */
-    function syncSliderToPhase01(phase01) {
-      if (!phaseSlider) return;
-      const p = Number(phase01);
-      if (!Number.isFinite(p)) return;
-      const v = Math.round(Math.min(1, Math.max(0, p)) * 1000);
-      phaseSlider.value = String(v);
-    }
-
     function goLive(opts = {}) {
       previewMode = false;
       if (globe.isOrbiting()) {
@@ -1657,17 +1626,12 @@
       let info = null;
       const paint = opts.paint !== false;
       try {
-        // "Now" → bake window only (same clock as slider / 60s tick).
+        // "Now" → bake window only (same clock as 60s tick).
         info = globe.setTime(now, { lockOrient: false, paint });
         globe.resetView();
       } catch (err) {
         console.warn("goLive setTime/resetView", err);
       }
-      const p =
-        info && Number.isFinite(info.phase01)
-          ? info.phase01
-          : livePhase01(now);
-      syncSliderToPhase01(p);
       showPhase(info || globe.getPhaseInfo());
       setLiveUI();
     }
@@ -1748,6 +1712,10 @@
       onPhase: showPhase,
       onOrbitChange(on) {
         setOrbitUI(on);
+      },
+      onScrub() {
+        previewMode = true;
+        setLiveUI();
       },
     });
     window.__sunGlobe = globe;
@@ -1849,7 +1817,7 @@
       if (!previewMode) {
         globe.setTime(new Date(), { lockOrient: false, paint });
       } else {
-        const phase = Number(phaseSlider.value) / 1000;
+        const phase = globe.getPhaseInfo()?.phase01 ?? livePhase01();
         if (globe.setCyclePhase) globe.setCyclePhase(phase, { paint });
         else {
           globe.setTime(dateFromCyclePhase(phase), {
@@ -1862,24 +1830,6 @@
       showPhase(globe.getPhaseInfo());
       saveLoc(lat, lon, source);
     }
-
-    phaseSlider.addEventListener("input", () => {
-      previewMode = true;
-      // Slider parks phase + metrics; Orbit keeps its own face until stopped.
-      setLiveUI();
-      const phase = Number(phaseSlider.value) / 1000;
-      if (previewRaf) cancelAnimationFrame(previewRaf);
-      previewRaf = requestAnimationFrame(() => {
-        previewRaf = 0;
-        const info = globe.setCyclePhase
-          ? globe.setCyclePhase(phase)
-          : globe.setTime(dateFromCyclePhase(phase), {
-              lockOrient: true,
-              orientDate: new Date(),
-            });
-        showPhase(info || globe.getPhaseInfo());
-      });
-    });
 
     function onLiveActivate(e) {
       if (e) {
@@ -1918,7 +1868,6 @@
       if (previewMode) return;
       // Same bake-window clock as Live (paints unless Orbit owns the face).
       const info = globe.setTime(new Date(), { lockOrient: false });
-      syncSliderToPhase01(info?.phase01 ?? livePhase01());
       showPhase(info || globe.getPhaseInfo());
     }, 60000);
 

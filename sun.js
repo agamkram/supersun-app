@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=86",
-  poster: "carrington-171-poster.jpg?v=86",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=86`,
+  meta: "frames.json?v=87",
+  poster: "carrington-171-poster.jpg?v=87",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=87`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -323,6 +323,7 @@ export function createSunGlobe(canvas, options = {}) {
     onPhase = null,
     onTap = null,
     onOrbitChange = null,
+    onScrub = null,
   } = options;
   const surface =
     (typeof document !== "undefined" && document.getElementById("touch-plane")) ||
@@ -827,19 +828,9 @@ export function createSunGlobe(canvas, options = {}) {
     return lastPhaseInfo;
   }
 
-  /**
-   * Same sensitivity as the phase slider: full track width = one Carrington.
-   * Falls back to the host width when the slider isn't in the DOM yet.
-   */
+  /** Full screen width = one Carrington. */
   function scrubSpanPx() {
-    if (typeof document !== "undefined") {
-      const track =
-        document.querySelector(".slider-track") ||
-        document.getElementById("phase-slider");
-      const tw = track?.getBoundingClientRect?.().width;
-      if (tw > 40) return tw;
-    }
-    return Math.max(width, 1);
+    return Math.max(width || window.innerWidth || 1, 1);
   }
 
   /** Drag/flick through the Carrington turn. dx>0 (drag right) advances. */
@@ -855,6 +846,7 @@ export function createSunGlobe(canvas, options = {}) {
       const v = dx / span / (sampleDtMs / 1000);
       scrubVel = THREE.MathUtils.clamp(v, -SCRUB_FLICK_MAX, SCRUB_FLICK_MAX);
     }
+    if (typeof onScrub === "function") onScrub();
   }
 
   function captureSkyPose(date = new Date()) {
@@ -1311,7 +1303,7 @@ export function createSunGlobe(canvas, options = {}) {
       el &&
       el.closest &&
       el.closest(
-        "input,button,select,textarea,a,label,#fact-sheet,.cycle,.slider-track,.cycle-controls"
+        "input,button,select,textarea,a,label,#fact-sheet"
       )
     );
   }
