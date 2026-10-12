@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=94",
-  poster: "carrington-171-poster.jpg?v=94",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=94`,
+  meta: "frames.json?v=95",
+  poster: "carrington-171-poster.jpg?v=95",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=95`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -1689,7 +1689,8 @@ export function createSunGlobe(canvas, options = {}) {
       // Stars: slow (~100s), continuous. Face: equal holds, one plate per beat.
       // When / metrics follow orbitPhase01.
       readSpherical();
-      spherical.theta -= ORBIT_RAD_PER_SEC * dt;
+      // Prograde (CCW from above): stars drift opposite the Sun's left→right face motion.
+      spherical.theta += ORBIT_RAD_PER_SEC * dt;
       writeCamera();
       const n = frameCount;
       if (n > 0) {
