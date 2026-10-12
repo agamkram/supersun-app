@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=98" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=98" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=99" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=99" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -999,12 +999,12 @@
   </aside>
 
   <div class="loc-bar" id="loc-bar">
-    <div class="orbit-test" id="orbit-test" role="group" aria-label="Orbit direction and speed test">
-      <button type="button" class="orbit-test-btn" id="orbit-test-btn" aria-pressed="false" title="Flip camera orbit direction">
+    <div class="orbit-test" id="orbit-test" role="group" aria-label="Starfield direction and speed">
+      <button type="button" class="orbit-test-btn" id="orbit-test-btn" aria-pressed="false" title="Flip starfield drift direction">
         Dir
       </button>
       <label class="orbit-test-speed">
-        <span>Speed</span>
+        <span>Stars</span>
         <input type="range" id="orbit-speed" min="0.25" max="4" step="0.05" value="1" />
         <span class="n" id="orbit-speed-val">1×</span>
       </label>
@@ -1107,7 +1107,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=98";
+    import { createSunGlobe } from "./sun.js?v=99";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1539,16 +1539,16 @@
       orbitTestBtn.setAttribute("aria-pressed", flipped ? "true" : "false");
       orbitTestBtn.textContent = flipped ? "Rev" : "Dir";
       orbitTestBtn.title = flipped
-        ? "Orbit direction: reversed (tap to flip)"
-        : "Orbit direction: normal (tap to flip)";
+        ? "Starfield direction: reversed (tap to flip)"
+        : "Starfield direction: normal (tap to flip)";
     }
 
+    /** Slider = starfield / camera turn only. Face loop stays at ORBIT_FACE_SEC0. */
     function applyOrbitSpeed(mult) {
       const m = Math.max(0.25, Math.min(4, Number(mult) || 1));
       if (orbitSpeedVal) orbitSpeedVal.textContent = `${m.toFixed(2).replace(/\.?0+$/, "")}×`;
       if (!globe?.setOrbitYawSec) return;
       globe.setOrbitYawSec(ORBIT_YAW_SEC0 / m);
-      globe.setOrbitFaceSec(ORBIT_FACE_SEC0 / m);
     }
 
     let orbitBootPending = true;
@@ -1619,6 +1619,7 @@
       },
     });
     window.__sunGlobe = globe;
+    globe.setOrbitFaceSec?.(ORBIT_FACE_SEC0);
     applyOrbitSpeed(orbitSpeed?.value ?? 1);
     setOrbitDirUI(globe.getOrbitYawSign?.() ?? 1);
 
