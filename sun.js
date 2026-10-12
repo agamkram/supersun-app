@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=97",
-  poster: "carrington-171-poster.jpg?v=97",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=97`,
+  meta: "frames.json?v=98",
+  poster: "carrington-171-poster.jpg?v=98",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=98`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -490,8 +490,9 @@ export function createSunGlobe(canvas, options = {}) {
         void main() {
           vec3 col = texture2D(uMap, vUv).rgb * uGain;
           float luma = max(col.r, max(col.g, col.b));
-          // Fade empty sky for stars; soft plate rim eases the AIA FOV cut.
-          float a = smoothstep(0.0, 0.014, luma);
+          // Clear faint outer corona so stars can sit closer to the bright disk.
+          // Soft edge on the square frame eases the hard FOV cut.
+          float a = smoothstep(0.028, 0.07, luma);
           float rim = smoothstep(0.0, 0.02, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
           a *= rim;
           if (a < 0.0015) discard;
