@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=100",
-  poster: "carrington-171-poster.jpg?v=100",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=100`,
+  meta: "frames.json?v=101",
+  poster: "carrington-171-poster.jpg?v=101",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=101`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -342,7 +342,7 @@ export function createSunGlobe(canvas, options = {}) {
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    antialias: false,
     alpha: false,
     powerPreference: "high-performance",
   });

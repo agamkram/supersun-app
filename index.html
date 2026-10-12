@@ -64,13 +64,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=100" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=100" as="fetch" crossorigin />
+  <link rel="preload" href="frames.json?v=101" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
-  <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.js" />
+  <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" />
   <style>
     :root {
       color-scheme: dark;
@@ -879,7 +878,7 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.min.js",
       "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
     }
   }
@@ -1016,7 +1015,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=100";
+    import { createSunGlobe } from "./sun.js?v=101";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
