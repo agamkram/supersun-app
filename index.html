@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=95" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=95" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=96" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=96" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -252,6 +252,69 @@
       --m-row-h: 1.7rem;
       --m-cell-pad: 2px 0.4rem;
       --m-cell-gap: 1px;
+    }
+
+    /* Temporary Orbit speed test — above the metrics box */
+    .orbit-test {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.2rem 0.35rem;
+      border-radius: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      pointer-events: auto;
+    }
+
+    .orbit-test-btn {
+      flex: 0 0 auto;
+      min-width: 3.2rem;
+      height: 1.55rem;
+      border: none;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--dim);
+      font-family: var(--font);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .orbit-test-btn[aria-pressed="true"] {
+      background: rgba(232, 244, 252, 0.18);
+      color: var(--text);
+    }
+
+    .orbit-test-speed {
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-width: 0;
+      margin: 0;
+      color: var(--dim);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .orbit-test-speed input[type="range"] {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin: 0;
+      accent-color: rgba(232, 244, 252, 0.75);
+    }
+
+    .orbit-test-speed .n {
+      flex: 0 0 2.2rem;
+      text-align: right;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
     }
 
     .metrics-panel {
@@ -781,6 +844,24 @@
       border-color: #551010;
     }
 
+    body.is-red-mode .orbit-test {
+      border-color: #551010;
+    }
+
+    body.is-red-mode .orbit-test-btn {
+      background: rgba(70, 10, 10, 0.45);
+      color: var(--dim);
+    }
+
+    body.is-red-mode .orbit-test-btn[aria-pressed="true"] {
+      background: rgba(200, 24, 32, 0.35);
+      color: var(--text);
+    }
+
+    body.is-red-mode .orbit-test-speed input[type="range"] {
+      accent-color: #c0141c;
+    }
+
     body.is-red-mode .app-title {
       color: #c0141c;
       text-shadow: 0 1px 10px rgba(40, 0, 0, 0.7);
@@ -918,6 +999,16 @@
   </aside>
 
   <div class="loc-bar" id="loc-bar">
+    <div class="orbit-test" id="orbit-test" role="group" aria-label="Orbit speed test">
+      <button type="button" class="orbit-test-btn" id="orbit-test-btn" aria-pressed="false" title="Toggle Orbit">
+        Test
+      </button>
+      <label class="orbit-test-speed">
+        <span>Speed</span>
+        <input type="range" id="orbit-speed" min="0.25" max="4" step="0.05" value="1" />
+        <span class="n" id="orbit-speed-val">1×</span>
+      </label>
+    </div>
     <div class="metrics-panel">
       <!-- Row order: rise/high/set + tools, Carrington/Dist/Size/When/Live, space weather -->
       <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset day length and display controls">
@@ -1016,7 +1107,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=95";
+    import { createSunGlobe } from "./sun.js?v=96";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1428,12 +1519,29 @@
       toggleRedMode();
     });
 
+    const orbitTestBtn = document.getElementById("orbit-test-btn");
+    const orbitSpeed = document.getElementById("orbit-speed");
+    const orbitSpeedVal = document.getElementById("orbit-speed-val");
+    const ORBIT_YAW_SEC0 = 100;
+    const ORBIT_FACE_SEC0 = 60;
+
     function setOrbitUI(on) {
       const active = !!on;
       orbitBtn.setAttribute("aria-pressed", active ? "true" : "false");
       orbitBtn.title = active
         ? "Stop orbit"
         : "Orbit: camera + Carrington face (tap again to stop)";
+      if (orbitTestBtn) {
+        orbitTestBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+    }
+
+    function applyOrbitSpeed(mult) {
+      const m = Math.max(0.25, Math.min(4, Number(mult) || 1));
+      if (orbitSpeedVal) orbitSpeedVal.textContent = `${m.toFixed(2).replace(/\.?0+$/, "")}×`;
+      if (!globe?.setOrbitYawSec) return;
+      globe.setOrbitYawSec(ORBIT_YAW_SEC0 / m);
+      globe.setOrbitFaceSec(ORBIT_FACE_SEC0 / m);
     }
 
     let orbitBootPending = true;
@@ -1446,12 +1554,22 @@
       setOrbitUI(true);
     }
 
-    orbitBtn.addEventListener("click", (e) => {
-      e.preventDefault();
+    function toggleOrbit(e) {
+      if (e) e.preventDefault();
       const next = !globe.isOrbiting();
       globe.setOrbiting(next);
       setOrbitUI(next);
-    });
+    }
+
+    orbitBtn.addEventListener("click", toggleOrbit);
+    orbitTestBtn?.addEventListener("click", toggleOrbit);
+    orbitSpeed?.addEventListener("input", () => applyOrbitSpeed(orbitSpeed.value));
+    document.getElementById("orbit-test")?.addEventListener("pointerdown", (e) => e.stopPropagation());
+    document.getElementById("orbit-test")?.addEventListener(
+      "touchstart",
+      (e) => e.stopPropagation(),
+      { passive: true }
+    );
 
     // Block copy / select (showcase PWA); inputs still selectable via CSS
     for (const evt of ["copy", "cut", "selectstart"]) {
@@ -1492,6 +1610,7 @@
       },
     });
     window.__sunGlobe = globe;
+    applyOrbitSpeed(orbitSpeed?.value ?? 1);
 
     window.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;

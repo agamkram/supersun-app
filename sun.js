@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=95",
-  poster: "carrington-171-poster.jpg?v=95",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=95`,
+  meta: "frames.json?v=96",
+  poster: "carrington-171-poster.jpg?v=96",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=96`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -396,8 +396,8 @@ export function createSunGlobe(canvas, options = {}) {
   let frameLoadActive = 0;
   /** @type {number[]} */
   const frameLoadQueue = [];
-  /** Camera / starfield yaw — same slow crawl as live globe (~100s/turn). */
-  const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
+  /** Camera / starfield yaw — seconds per full turn (default ~100s). */
+  let orbitYawSec = 100;
   /**
    * Face period during Orbit (seconds per full loop).
    * 649 plates @ 30s ≈ 46ms/cut (stutters). 60s ≈ 92ms — same pace as the old 2h@30s bake.
@@ -1690,7 +1690,8 @@ export function createSunGlobe(canvas, options = {}) {
       // When / metrics follow orbitPhase01.
       readSpherical();
       // Prograde (CCW from above): stars drift opposite the Sun's left→right face motion.
-      spherical.theta += ORBIT_RAD_PER_SEC * dt;
+      const yawSec = Math.max(orbitYawSec, 8);
+      spherical.theta += ((2 * Math.PI) / yawSec) * dt;
       writeCamera();
       const n = frameCount;
       if (n > 0) {
@@ -1836,10 +1837,17 @@ export function createSunGlobe(canvas, options = {}) {
     setOrbitFaceSec(sec) {
       const n = Number(sec);
       if (!Number.isFinite(n)) return orbitFaceSec;
-      orbitFaceSec = THREE.MathUtils.clamp(n, 8, 180);
+      orbitFaceSec = THREE.MathUtils.clamp(n, 8, 400);
       return orbitFaceSec;
     },
     getOrbitFaceSec: () => orbitFaceSec,
+    setOrbitYawSec(sec) {
+      const n = Number(sec);
+      if (!Number.isFinite(n)) return orbitYawSec;
+      orbitYawSec = THREE.MathUtils.clamp(n, 8, 400);
+      return orbitYawSec;
+    },
+    getOrbitYawSec: () => orbitYawSec,
     getPhaseInfo,
     getObserver,
     setFlameParams,
