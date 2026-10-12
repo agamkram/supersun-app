@@ -65,9 +65,9 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
   <link rel="preload" href="frames.json?v=107" as="fetch" crossorigin />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
+  <link rel="preload" href="fonts/michroma.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="fonts.css?v=107" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" />
   <style>
@@ -1013,9 +1013,24 @@
     </div>
   </div>
 
-  <script src="astronomy.js"></script>
   <script type="module">
     import { createSunGlobe } from "./sun.js?v=107";
+
+    /** Load after the first sun image so open stays snappy. */
+    let astronomyPromise = null;
+    function loadAstronomy() {
+      if (globalThis.Astronomy) return Promise.resolve(globalThis.Astronomy);
+      if (astronomyPromise) return astronomyPromise;
+      astronomyPromise = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "astronomy.js";
+        s.async = true;
+        s.onload = () => resolve(globalThis.Astronomy);
+        s.onerror = () => reject(new Error("astronomy.js failed"));
+        document.head.appendChild(s);
+      });
+      return astronomyPromise;
+    }
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1471,6 +1486,11 @@
         status.textContent = "";
         status.style.display = "none";
         updateSpaceWeather(true);
+        loadAstronomy()
+          .then(() => {
+            if (globe) showPhase(globe.getPhaseInfo());
+          })
+          .catch(() => {});
       },
       onQuality(kind) {
         // Boot Orbit after plate 0 is on the plate (single opening face).

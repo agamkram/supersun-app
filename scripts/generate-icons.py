@@ -9,7 +9,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 # Mid-loop plate with clear active regions (face-on, not the old equirect map).
-PLATE = ROOT / "frames" / "0200.jpg"
+PLATE = ROOT / "frames" / "0200.webp"
 BG = (2, 3, 8)
 
 

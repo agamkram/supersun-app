@@ -251,16 +251,16 @@ def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
 
     # Scrub plates for the live app (snappy drawImage path).
     OUT_FRAMES.mkdir(parents=True, exist_ok=True)
-    for old in OUT_FRAMES.glob("*.jpg"):
+    for old in list(OUT_FRAMES.glob("*.jpg")) + list(OUT_FRAMES.glob("*.webp")):
         old.unlink()
-    print(f"scrub plates → {OUT_FRAMES} @ {SCRUB_SIZE}px", flush=True)
+    print(f"scrub frames → {OUT_FRAMES} @ {SCRUB_SIZE}px webp", flush=True)
     for i, src in enumerate(paths):
         im = Image.open(src).convert("RGB").resize(
             (SCRUB_SIZE, SCRUB_SIZE), Image.Resampling.LANCZOS
         )
-        im.save(OUT_FRAMES / f"{i:04d}.jpg", quality=82, optimize=True, progressive=True)
+        im.save(OUT_FRAMES / f"{i:04d}.webp", format="WEBP", quality=90, method=4)
         if i % 50 == 0:
-            print(f"  plate {i}/{len(paths)}", flush=True)
+            print(f"  frame {i}/{len(paths)}", flush=True)
     OUT_FRAMES_META.write_text(
         json.dumps(
             {
@@ -271,7 +271,7 @@ def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
                 "durationSec": DURATION_SEC,
                 "imageScale": IMAGE_SCALE,
                 "bakeSize": SIZE,
-                "pattern": "frames/{i:04d}.jpg",
+                "pattern": "frames/{i:04d}.webp",
             },
             indent=2,
         )

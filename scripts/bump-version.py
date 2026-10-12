@@ -30,6 +30,7 @@ def write(n: int) -> None:
         index2,
     )
     index2 = re.sub(r"frames\.json\?v=\d+", f"frames.json?v={n}", index2)
+    index2 = re.sub(r"fonts\.css\?v=\d+", f"fonts.css?v={n}", index2)
     INDEX.write_text(index2)
 
     sun = SUN.read_text()
@@ -44,7 +45,7 @@ def write(n: int) -> None:
         sun2,
     )
     sun2, c5 = re.subn(
-        r"(frames/\$\{String\(i\)\.padStart\(4, \"0\"\)\}\.jpg)\?v=\d+",
+        r"(frames/\$\{String\(i\)\.padStart\(4, \"0\"\)\}\.webp)\?v=\d+",
         rf"\1?v={n}",
         sun2,
     )

@@ -122,7 +122,7 @@ function createStarfield() {
 const MOVIE = {
   meta: "frames.json?v=107",
   poster: "carrington-171-poster.jpg?v=107",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=107`,
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=107`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -396,6 +396,11 @@ export function createSunGlobe(canvas, options = {}) {
   let frameLoadActive = 0;
   /** @type {number[]} */
   const frameLoadQueue = [];
+  /** Redraw when something changed; skip GPU work while parked and still. */
+  let needsDraw = true;
+  function requestDraw() {
+    needsDraw = true;
+  }
   /**
    * Camera / starfield yaw — locked at 0.75× of the old 100s turn (Dir / prograde).
    * Stars drift opposite the Sun's left→right face motion.
@@ -678,6 +683,7 @@ export function createSunGlobe(canvas, options = {}) {
     plateTex.needsUpdate = true;
     bindPlateMap();
     frameIndex = idx;
+    requestDraw();
     return true;
   }
 
@@ -938,6 +944,7 @@ export function createSunGlobe(canvas, options = {}) {
     observerLon = lo;
     if (orientLocked) captureSkyPose(new Date());
     applyEphemeris();
+    requestDraw();
     return getPhaseInfo();
   }
 
@@ -1166,11 +1173,13 @@ export function createSunGlobe(canvas, options = {}) {
     syncSun();
     prevCamDist = homeDist;
     applyEphemeris();
+    requestDraw();
   }
 
   function setCamDist(dist) {
     dist = THREE.MathUtils.clamp(dist, MIN_DIST, Math.max(homeDist, MIN_DIST + 0.2));
-    // Full un-zoom → home framing (plate edge at screen edge).
+    requestDraw();
+    // Full un-zoom → home framing (sun edge at screen edge).
     if (dist >= homeDist - 1e-4) {
       applyHomeFraming();
       return;
@@ -1214,6 +1223,7 @@ export function createSunGlobe(canvas, options = {}) {
 
   function panCamera(dxPx, dyPx) {
     if (Math.abs(dxPx) < 0.5 && Math.abs(dyPx) < 0.5) return;
+    requestDraw();
 
     screenPanX += dxPx;
     screenPanY += dyPx;
@@ -1360,6 +1370,7 @@ export function createSunGlobe(canvas, options = {}) {
       }
     } else setCamDist(homeDist * zoomFrac);
     getLayoutMetrics();
+    requestDraw();
   }
 
   function resetView() {
@@ -1767,7 +1778,11 @@ export function createSunGlobe(canvas, options = {}) {
       applyEphemeris();
     }
     syncSun();
-    renderer.render(scene, camera);
+    const moving = orbiting || scrubVel !== 0;
+    if (moving || needsDraw) {
+      needsDraw = false;
+      renderer.render(scene, camera);
+    }
   }
 
 
