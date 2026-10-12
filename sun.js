@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=96",
-  poster: "carrington-171-poster.jpg?v=96",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=96`,
+  meta: "frames.json?v=97",
+  poster: "carrington-171-poster.jpg?v=97",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=97`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -398,6 +398,8 @@ export function createSunGlobe(canvas, options = {}) {
   const frameLoadQueue = [];
   /** Camera / starfield yaw — seconds per full turn (default ~100s). */
   let orbitYawSec = 100;
+  /** +1 prograde (CCW from above), −1 the other way. */
+  let orbitYawSign = 1;
   /**
    * Face period during Orbit (seconds per full loop).
    * 649 plates @ 30s ≈ 46ms/cut (stutters). 60s ≈ 92ms — same pace as the old 2h@30s bake.
@@ -1689,9 +1691,9 @@ export function createSunGlobe(canvas, options = {}) {
       // Stars: slow (~100s), continuous. Face: equal holds, one plate per beat.
       // When / metrics follow orbitPhase01.
       readSpherical();
-      // Prograde (CCW from above): stars drift opposite the Sun's left→right face motion.
+      // Sign: +1 prograde (stars vs face), −1 the other way. Test button flips it.
       const yawSec = Math.max(orbitYawSec, 8);
-      spherical.theta += ((2 * Math.PI) / yawSec) * dt;
+      spherical.theta += orbitYawSign * ((2 * Math.PI) / yawSec) * dt;
       writeCamera();
       const n = frameCount;
       if (n > 0) {
@@ -1848,6 +1850,15 @@ export function createSunGlobe(canvas, options = {}) {
       return orbitYawSec;
     },
     getOrbitYawSec: () => orbitYawSec,
+    setOrbitYawSign(sign) {
+      orbitYawSign = Number(sign) < 0 ? -1 : 1;
+      return orbitYawSign;
+    },
+    getOrbitYawSign: () => orbitYawSign,
+    flipOrbitYawDir() {
+      orbitYawSign = orbitYawSign < 0 ? 1 : -1;
+      return orbitYawSign;
+    },
     getPhaseInfo,
     getObserver,
     setFlameParams,

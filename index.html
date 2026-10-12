@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=96" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=96" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=97" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=97" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -999,9 +999,9 @@
   </aside>
 
   <div class="loc-bar" id="loc-bar">
-    <div class="orbit-test" id="orbit-test" role="group" aria-label="Orbit speed test">
-      <button type="button" class="orbit-test-btn" id="orbit-test-btn" aria-pressed="false" title="Toggle Orbit">
-        Test
+    <div class="orbit-test" id="orbit-test" role="group" aria-label="Orbit direction and speed test">
+      <button type="button" class="orbit-test-btn" id="orbit-test-btn" aria-pressed="false" title="Flip camera orbit direction">
+        Dir
       </button>
       <label class="orbit-test-speed">
         <span>Speed</span>
@@ -1107,7 +1107,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=96";
+    import { createSunGlobe } from "./sun.js?v=97";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1531,9 +1531,16 @@
       orbitBtn.title = active
         ? "Stop orbit"
         : "Orbit: camera + Carrington face (tap again to stop)";
-      if (orbitTestBtn) {
-        orbitTestBtn.setAttribute("aria-pressed", active ? "true" : "false");
-      }
+    }
+
+    function setOrbitDirUI(sign) {
+      const flipped = Number(sign) < 0;
+      if (!orbitTestBtn) return;
+      orbitTestBtn.setAttribute("aria-pressed", flipped ? "true" : "false");
+      orbitTestBtn.textContent = flipped ? "Rev" : "Dir";
+      orbitTestBtn.title = flipped
+        ? "Orbit direction: reversed (tap to flip)"
+        : "Orbit direction: normal (tap to flip)";
     }
 
     function applyOrbitSpeed(mult) {
@@ -1554,15 +1561,17 @@
       setOrbitUI(true);
     }
 
-    function toggleOrbit(e) {
-      if (e) e.preventDefault();
+    orbitBtn.addEventListener("click", (e) => {
+      e.preventDefault();
       const next = !globe.isOrbiting();
       globe.setOrbiting(next);
       setOrbitUI(next);
-    }
-
-    orbitBtn.addEventListener("click", toggleOrbit);
-    orbitTestBtn?.addEventListener("click", toggleOrbit);
+    });
+    orbitTestBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (!globe?.flipOrbitYawDir) return;
+      setOrbitDirUI(globe.flipOrbitYawDir());
+    });
     orbitSpeed?.addEventListener("input", () => applyOrbitSpeed(orbitSpeed.value));
     document.getElementById("orbit-test")?.addEventListener("pointerdown", (e) => e.stopPropagation());
     document.getElementById("orbit-test")?.addEventListener(
@@ -1611,6 +1620,7 @@
     });
     window.__sunGlobe = globe;
     applyOrbitSpeed(orbitSpeed?.value ?? 1);
+    setOrbitDirUI(globe.getOrbitYawSign?.() ?? 1);
 
     window.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
