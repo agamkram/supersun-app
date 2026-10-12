@@ -1,12 +1,14 @@
 /**
- * Hi-res 3D Sun
- * 1-finger orbit · 2fs (two-finger slide) pan · pinch zoom · Live/home reset
- * The texture is a Carrington map; the longitude facing Earth is in surface.json.
+ * Hi-res Sun — AIA 171 Carrington loop on a starfield.
+ * 1-finger / drag / slider: scrub Carrington frames (face-on)
+ * Orbit: slow camera yaw (~100s) + even face beats (own clock; not slider/metrics).
+ * 2fs pan · pinch zoom · Live/home reset
  */
 import * as THREE from "three";
 
 const RADIUS = 1;
-const HOME_FILL = 0.9;
+/** Plate width vs host width. 1 = L/R edges on the screen edges (width-only fit). */
+const HOME_FILL = 1.0;
 const MIN_DIST = 1.02;
 const MIN_POLAR = 0.15;
 const MAX_POLAR = Math.PI - 0.15;
@@ -116,15 +118,21 @@ function createStarfield() {
   return points;
 }
 
-const SURFACE = { map: "sun-2k.jpg?v=32", segments: 224 };
-
-/** The map is flat; this darkens the rim. */
-const LIMB_U = 0.62;
+/** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
+const MOVIE = {
+  meta: "frames.json?v=84",
+  poster: "carrington-171-poster.jpg?v=84",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=84`,
+  /** World size of the square AIA plate; home fits this to the screen. */
+  plane: 2.35,
+  durationSec: 12,
+  /** Bake window — overwritten from frames.json start/end when meta loads. */
+  t0: Date.parse("2026-09-14T00:00:00Z"),
+  t1: Date.parse("2026-10-11T00:00:00Z"),
+};
 
 /**
- * Corona aimed at real AIA 171 limb structure:
- * radial filaments / streamers, bright active regions, fine living grain.
- * Boil kept only as A/B against that target.
+ * Legacy flame shell (off in movie mode). Kept so ?flame still compiles.
  */
 const FLAME_TRY = 32;
 const ATMO_HEIGHT = 1.18;
@@ -312,6 +320,7 @@ export function createSunGlobe(canvas, options = {}) {
     onQuality = null,
     onPhase = null,
     onTap = null,
+    onOrbitChange = null,
   } = options;
   const surface =
     (typeof document !== "undefined" && document.getElementById("touch-plane")) ||
@@ -350,14 +359,49 @@ export function createSunGlobe(canvas, options = {}) {
   const loader = new THREE.TextureLoader();
   let mesh = null;
   let material = null;
+  let plateCanvas = null;
+  let plateCtx = null;
+  let plateTex = null;
+  /** @type {(HTMLImageElement|null)[]} */
+  let frameImgs = [];
+  /** @type {(Promise<HTMLImageElement|null>|null)[]} in-flight loads — never restart. */
+  let framePromises = [];
+  let frameCount = 0;
+  let frameIndex = -1;
+  let moviePhase01 = 0;
+  /** Visual Carrington phase while Orbit runs — never writes slider/metrics. */
+  let orbitPhase01 = 0;
   let ready = false;
-  let hqStarted = false;
   let disposed = false;
   let animId = 0;
+  /** Orbit = advance Carrington frames on a fixed face-on disk. */
   let orbiting = false;
-  let lastOrbitMs = 0;
-  /** Slow spin: one full turn about every 100s — cheap (theta += dt). */
+  /** True after the playhead frame has painted. */
+  let orbitFaceReady = false;
+  /** Integer plate while Orbit runs. Cuts are index steps, not phase rounding. */
+  let orbitFrame = 0;
+  /** Seconds accumulated toward the next plate. */
+  let orbitHold = 0;
+  /** Face clock runs only after the next plates are already decoded. */
+  let orbitClock = false;
+  /** Plates that must be decoded before the first cut. */
+  const ORBIT_PREROLL = 24;
+  /** Keep this many plates ahead of the one on screen. */
+  const ORBIT_LOOKAHEAD = 120;
+  /** Camera / starfield yaw — same slow crawl as live globe (~100s/turn). */
   const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
+  /**
+   * Face period during Orbit (seconds per full loop).
+   * 649 plates @ 30s ≈ 46ms/cut (stutters). 60s ≈ 92ms — same pace as the old 2h@30s bake.
+   */
+  let orbitFaceSec = 60;
+  let lastAnimMs = 0;
+  /** Flick inertia: phase units (0–1) per second. */
+  let scrubVel = 0;
+  /** Mild coast only — slider has none; old 1.8 turns/s felt like many Carringtons. */
+  const SCRUB_FRICTION = 6.0;
+  const SCRUB_FLICK_MAX = 0.22;
+  let phaseDirty = false;
   let atmosphere = null;
   let atmosphereMat = null;
   const _atmoCenter = new THREE.Vector3();
@@ -389,18 +433,22 @@ export function createSunGlobe(canvas, options = {}) {
   let frozenRoll = 0;
   let frozenSouthern = false;
 
-  function configureColor(tex) {
+  function configureColor(tex, { video = false } = {}) {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.flipY = true;
     tex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
-    tex.generateMipmaps = true;
+    if (video) {
+      tex.minFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+    } else {
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = true;
+    }
     tex.needsUpdate = true;
   }
 
-
-  function buildMesh(map, cfg) {
+  function buildMovieMesh(map) {
     if (mesh) {
       sunGroup.remove(mesh);
       mesh.geometry.dispose();
@@ -411,53 +459,57 @@ export function createSunGlobe(canvas, options = {}) {
       material = null;
     }
 
-    // Keep the file's own bytes. The limb multiply is in that same space.
     map.colorSpace = THREE.NoColorSpace;
     map.needsUpdate = true;
-    // Flat photosphere. Limb darkening is view-dependent, so the rim stays the rim.
     material = new THREE.ShaderMaterial({
       uniforms: {
         uMap: { value: map },
-        uLimb: { value: LIMB_U },
       },
       vertexShader: `
         varying vec2 vUv;
-        varying vec3 vNormalW;
-        varying vec3 vViewW;
         void main() {
           vUv = uv;
-          vec4 worldPos = modelMatrix * vec4(position, 1.0);
-          vNormalW = normalize(mat3(modelMatrix) * normal);
-          vViewW = normalize(cameraPosition - worldPos.xyz);
-          gl_Position = projectionMatrix * viewMatrix * worldPos;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
         uniform sampler2D uMap;
-        uniform float uLimb;
         varying vec2 vUv;
-        varying vec3 vNormalW;
-        varying vec3 vViewW;
         void main() {
           vec3 col = texture2D(uMap, vUv).rgb;
-          float mu = clamp(dot(normalize(vNormalW), normalize(vViewW)), 0.0, 1.0);
-          // 171 brightens toward the rim. The glow stays on the silhouette.
-          float rim = pow(1.0 - mu, 1.7);
-          col += col * rim * 1.15;
-          col += vec3(1.0, 0.78, 0.28) * rim * 0.22;
-          gl_FragColor = vec4(col, 1.0);
+          float luma = max(col.r, max(col.g, col.b));
+          // Fade empty sky for stars; soft plate rim eases the AIA FOV cut.
+          float a = smoothstep(0.0, 0.014, luma);
+          float rim = smoothstep(0.0, 0.02, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
+          a *= rim;
+          if (a < 0.0015) discard;
+          gl_FragColor = vec4(col * a, a);
         }
       `,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      blending: THREE.NormalBlending,
+      premultipliedAlpha: true,
     });
-    material.toneMapped = false;
 
-    mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(RADIUS, cfg.segments, cfg.segments),
-      material
-    );
+    const side = MOVIE.plane;
+    mesh = new THREE.Mesh(new THREE.PlaneGeometry(side, side), material);
+    mesh.frustumCulled = false;
     sunGroup.add(mesh);
-    ensureAtmosphere();
     applyEphemeris();
+  }
+
+  function bindPlateMap() {
+    if (!plateTex) return;
+    plateTex.needsUpdate = true;
+    if (!mesh || !material?.uniforms?.uMap) {
+      buildMovieMesh(plateTex);
+      return;
+    }
+    material.uniforms.uMap.value = plateTex;
   }
 
   const flameParams = { ...FLAME_DEFAULTS };
@@ -546,18 +598,260 @@ export function createSunGlobe(canvas, options = {}) {
     applyFlameUniforms();
   }
 
-  function loadLow() {
-    const cfg = SURFACE;
-    loader.load(cfg.map, (tex) => {
-      if (disposed) return;
-      configureColor(tex);
-      buildMesh(tex, cfg);
-      ready = true;
-      if (typeof onReady === "function") onReady();
-      if (typeof onQuality === "function") onQuality("2k");
-    });
+  /** Looping phase (Orbit / flick). Note: `1 % 1 === 0` in JS. */
+  function wrapPhase01(p) {
+    p = Number(p) || 0;
+    p = p % 1;
+    if (p < 0) p += 1;
+    return p;
   }
 
+  /** Parked / slider phase — keeps 1.0 at the end (no snap to 0). */
+  function clampPhase01(p) {
+    return THREE.MathUtils.clamp(Number(p) || 0, 0, 1);
+  }
+
+  function phaseToDate(p) {
+    const span = Math.max(MOVIE.t1 - MOVIE.t0, 1);
+    return new Date(MOVIE.t0 + clampPhase01(p) * span);
+  }
+
+  function dateToPhase(date) {
+    const t = date instanceof Date ? date.getTime() : Date.parse(date);
+    if (!Number.isFinite(t)) return moviePhase01;
+    const span = Math.max(MOVIE.t1 - MOVIE.t0, 1);
+    return THREE.MathUtils.clamp((t - MOVIE.t0) / span, 0, 1);
+  }
+
+  function ensurePlate(size = 1024) {
+    if (plateCanvas && plateCanvas.width === size) return false;
+    plateCanvas = document.createElement("canvas");
+    plateCanvas.width = size;
+    plateCanvas.height = size;
+    plateCtx = plateCanvas.getContext("2d", { alpha: false });
+    plateCtx.fillStyle = "#000";
+    plateCtx.fillRect(0, 0, size, size);
+    if (plateTex) plateTex.dispose();
+    plateTex = new THREE.CanvasTexture(plateCanvas);
+    configureColor(plateTex, { video: true });
+    plateTex.colorSpace = THREE.NoColorSpace;
+    frameIndex = -1;
+    return true;
+  }
+
+  function paintImageToPlate(img) {
+    // Fallback path (placeholder). Orbit/scrub bind the Image directly.
+    if (!plateCtx || !plateTex || !img?.naturalWidth) return false;
+    plateCtx.drawImage(img, 0, 0, plateCanvas.width, plateCanvas.height);
+    plateTex.image = plateCanvas;
+    plateTex.needsUpdate = true;
+    bindPlateMap();
+    return true;
+  }
+
+  function frameReady(i) {
+    const img = frameImgs[i];
+    return !!(img && img.complete && img.naturalWidth > 0);
+  }
+
+  function paintFrameIndex(i, force = false) {
+    if (!plateTex) return false;
+    const n = Math.max(frameCount, 1);
+    const idx = ((Math.round(i) % n) + n) % n;
+    if (!frameReady(idx)) return false;
+    if (!force && idx === frameIndex) return true;
+    const img = frameImgs[idx];
+    // Bind the decoded JPEG directly — skip canvas blit + second upload.
+    plateTex.image = img;
+    plateTex.colorSpace = THREE.NoColorSpace;
+    plateTex.needsUpdate = true;
+    bindPlateMap();
+    frameIndex = idx;
+    return true;
+  }
+
+  function showFrameAtPhase(p, force = false) {
+    const n = Math.max(frameCount, 1);
+    // clamp (not wrap): phase 1.0 is the last frame, not a snap to 0.
+    const idx = Math.min(n - 1, Math.max(0, Math.round(clampPhase01(p) * (n - 1))));
+    return paintFrameIndex(idx, force);
+  }
+
+  function loadMovie() {
+    ensurePlate(1024);
+    buildMovieMesh(plateTex);
+    // Stay hidden (no poster) until the Orbit start plate paints — avoids
+    // poster → Live → wrap-to-0 as three different opening faces.
+
+    fetch(MOVIE.meta)
+      .then((r) => r.json())
+      .then((meta) => {
+        if (disposed || !meta) return;
+        frameCount = Math.max(1, Number(meta.count) || 0);
+        const size = Number(meta.size) || 1024;
+        if (Number.isFinite(Number(meta.durationSec))) {
+          MOVIE.durationSec = Number(meta.durationSec);
+        }
+        // Single source of truth for Live/slider ↔ plate mapping.
+        const t0 = Date.parse(meta.start);
+        const t1 = Date.parse(meta.end);
+        if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) {
+          MOVIE.t0 = t0;
+          MOVIE.t1 = t1;
+          // Re-map parked Live phase now that the real window is known.
+          moviePhase01 = dateToPhase(new Date());
+          when = phaseToDate(moviePhase01);
+          applyEphemeris();
+        }
+        ensurePlate(size);
+        bindPlateMap();
+        frameImgs = new Array(frameCount).fill(null);
+        framePromises = new Array(frameCount).fill(null);
+        // Boot always opens on plate 0 (start of the baked turn).
+        const bootIdx = 0;
+        orbitFrame = bootIdx;
+        // Forward buffer only — full-ring prefetch starved Orbit on 649 plates.
+        ensureOrbitAhead();
+        const reveal = () => {
+          if (disposed) return;
+          if (!paintFrameIndex(bootIdx, true)) return;
+          if (!ready) {
+            ready = true;
+            if (typeof onReady === "function") onReady();
+          }
+          if (typeof onQuality === "function") onQuality("frames");
+        };
+        loadFrame(bootIdx).then(reveal);
+      })
+      .catch(() => {});
+  }
+
+  function loadFrame(i) {
+    const idx = i | 0;
+    if (idx < 0 || idx >= frameCount) return Promise.resolve(null);
+    if (frameImgs[idx]?.complete && frameImgs[idx].naturalWidth) {
+      return Promise.resolve(frameImgs[idx]);
+    }
+    // Reuse the in-flight request — restarting every rAF starved Orbit.
+    if (framePromises[idx]) return framePromises[idx];
+    framePromises[idx] = new Promise((resolve) => {
+      const img = new Image();
+      img.decoding = "async";
+      const finish = () => {
+        frameImgs[idx] = img;
+        if (orbiting && idx === orbitFrame && paintFrameIndex(orbitFrame, true)) {
+          orbitFaceReady = true;
+        }
+        resolve(img);
+      };
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          img.decode().then(finish).catch(finish);
+        } else finish();
+      };
+      img.onerror = () => {
+        framePromises[idx] = null;
+        resolve(null);
+      };
+      img.src = MOVIE.frameUrl(idx);
+      frameImgs[idx] = img;
+    });
+    return framePromises[idx];
+  }
+
+  /** Kick missing plates ahead of the Orbit playhead (idempotent). */
+  function ensureOrbitAhead() {
+    const n = frameCount;
+    if (n < 1) return;
+    const ahead = Math.min(ORBIT_LOOKAHEAD, n);
+    for (let k = 0; k < ahead; k++) {
+      const i = (orbitFrame + k) % n;
+      if (!frameReady(i)) loadFrame(i);
+    }
+  }
+
+  /** Load order starting at playhead, then outward (Orbit/scrub stay snappy). */
+  function frameLoadOrder(fromIdx) {
+    const n = Math.max(frameCount, 1);
+    const start = ((fromIdx % n) + n) % n;
+    const order = [start];
+    for (let d = 1; d < n; d++) {
+      order.push((start + d) % n);
+      if (order.length >= n) break;
+      order.push((start - d + n) % n);
+      if (order.length >= n) break;
+    }
+    return order;
+  }
+
+  async function prefetchFrames(fromIdx = 0) {
+    const conc = 8;
+    const order = frameLoadOrder(fromIdx);
+    let cursor = 0;
+    async function worker() {
+      while (!disposed && cursor < order.length) {
+        const i = order[cursor++];
+        await loadFrame(i);
+      }
+    }
+    await Promise.all(Array.from({ length: conc }, () => worker()));
+  }
+
+  /**
+   * Parked Carrington phase (slider / Live / metrics). Orbit uses orbitPhase01
+   * and does not stop when this changes.
+   */
+  function setCyclePhase(p, opts = {}) {
+    if (!opts.fromOrbit) scrubVel = 0;
+    moviePhase01 = clampPhase01(Number(p) || 0);
+    when = phaseToDate(moviePhase01);
+    if (orbiting || opts.paint === false) {
+      // Park phase + metrics only — leave the visible face alone.
+      applyEphemeris();
+      return lastPhaseInfo;
+    }
+    showFrameAtPhase(moviePhase01);
+    // If the frame isn't loaded yet, keep trying once it arrives.
+    if (frameIndex < 0 || !frameImgs[frameIndex]?.complete) {
+      const n = Math.max(frameCount, 1);
+      const idx = Math.min(n - 1, Math.max(0, Math.round(moviePhase01 * (n - 1))));
+      loadFrame(idx).then(() => {
+        if (!disposed && !orbiting) showFrameAtPhase(moviePhase01);
+      });
+    }
+    applyEphemeris();
+    return lastPhaseInfo;
+  }
+
+  /**
+   * Same sensitivity as the phase slider: full track width = one Carrington.
+   * Falls back to the host width when the slider isn't in the DOM yet.
+   */
+  function scrubSpanPx() {
+    if (typeof document !== "undefined") {
+      const track =
+        document.querySelector(".slider-track") ||
+        document.getElementById("phase-slider");
+      const tw = track?.getBoundingClientRect?.().width;
+      if (tw > 40) return tw;
+    }
+    return Math.max(width, 1);
+  }
+
+  /** Drag/flick through the Carrington turn. dx>0 (drag right) advances. */
+  function scrubMovieByPx(dx, sampleDtMs) {
+    if (!Number.isFinite(dx) || dx === 0) return;
+    if (orbiting) return; // Orbit runs until stopped — don't fight the face clock.
+    const span = scrubSpanPx();
+    moviePhase01 = wrapPhase01(moviePhase01 + dx / span);
+    when = phaseToDate(moviePhase01);
+    showFrameAtPhase(moviePhase01);
+    phaseDirty = true;
+    if (sampleDtMs > 0) {
+      const v = dx / span / (sampleDtMs / 1000);
+      scrubVel = THREE.MathUtils.clamp(v, -SCRUB_FLICK_MAX, SCRUB_FLICK_MAX);
+    }
+  }
 
   function captureSkyPose(date = new Date()) {
     frozenSouthern = observerLat < 0;
@@ -565,20 +859,13 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   function applyEphemeris() {
-    const phase01 = carringtonPhase(when);
+    const phase01 = moviePhase01;
     const l0 = l0Degrees(when);
-    if (mesh) {
-      mesh.rotation.order = "YXZ";
-      // Carrington longitude L0 faces the camera. East is to the left.
-      mesh.rotation.y = THREE.MathUtils.degToRad(270 + l0);
-      mesh.rotation.x = 0;
-      mesh.rotation.z = 0;
-    }
+    // Movie disk billboards to the camera; phase is the frame, not mesh spin.
     const southern = orientLocked ? frozenSouthern : observerLat < 0;
     const skyRoll = orientLocked
       ? frozenRoll
       : skyRollRad(observerLat, observerLon, when);
-    // Solar north stays up. Sky roll would lean the poles for the local horizon.
     sunGroup.rotation.set(0, 0, 0);
     sunGroup.position.copy(target);
 
@@ -620,8 +907,7 @@ export function createSunGlobe(canvas, options = {}) {
       captureSkyPose(opts.orientDate || new Date());
       orientLocked = true;
     }
-    applyEphemeris();
-    return getPhaseInfo();
+    return setCyclePhase(dateToPhase(when), opts);
   }
 
   function getPhaseInfo() {
@@ -630,6 +916,21 @@ export function createSunGlobe(canvas, options = {}) {
 
   function getObserver() {
     return { lat: observerLat, lon: observerLon };
+  }
+
+  /** Baked AIA window (ms). Populated from frames.json. */
+  function getMovieWindow() {
+    return { t0: MOVIE.t0, t1: MOVIE.t1 };
+  }
+
+  /** Map a wall-clock date into the bake window (0…1, clamped). */
+  function moviePhase01FromDate(date = new Date()) {
+    return dateToPhase(date);
+  }
+
+  /** Inverse of moviePhase01FromDate. */
+  function dateFromMoviePhase01(phase01) {
+    return phaseToDate(phase01);
   }
 
 
@@ -668,21 +969,17 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   /**
-   * Home distance for full-window canvas: disk sized to the band above the
-   * bottom info area. Zoom can still go closer and fill the whole screen.
+   * Home: match plate *width* to host width so L/R AIA edges sit on the screen
+   * edges. Do not size against height — that overscanned L/R and looked huge.
    */
   function computeHomeDistance(w, h) {
-    const pads = readHomePadsPx();
-    const availH = Math.max(160, h - pads.top - pads.bottom);
-    const availW = Math.max(160, w - 24);
-    // Always size home against the *viewport* FOV (BASE_FOV), not the buffer FOV
     const vFov = THREE.MathUtils.degToRad(BASE_FOV);
     const aspect = Math.max(w, 1) / Math.max(h, 1);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    const fit = HOME_FILL;
-    const distV = (RADIUS * h) / (fit * availH * Math.tan(vFov / 2));
-    const distH = (RADIUS * w) / (fit * availW * Math.tan(hFov / 2));
-    return Math.max(distV, distH, MIN_DIST + 0.2);
+    const fitR = MOVIE.plane * 0.5;
+    // Full host width (no side pad) — L/R edges ↔ screen edges.
+    const distH = (fitR * w) / (HOME_FILL * w * Math.tan(hFov / 2));
+    return Math.max(distH, MIN_DIST + 0.2);
   }
 
   function readSpherical() {
@@ -703,11 +1000,9 @@ export function createSunGlobe(canvas, options = {}) {
     camera.position.copy(target).add(_offset);
     camera.up.set(0, 1, 0);
     camera.lookAt(target);
-    // Near plane must be *closer* than the front of the sphere (dist − RADIUS).
-    // Default near=0.05 clipped the disk when zoomed in → hard L/R edges.
+    // Flat plate at the target — keep near plane clear of the disk.
     const dist = spherical.radius;
-    const frontGap = dist - RADIUS; // distance camera → front of disk
-    camera.near = Math.max(0.001, frontGap * 0.35);
+    camera.near = Math.max(0.001, dist * 0.25);
     camera.far = Math.max(200, dist + 40);
     camera.updateProjectionMatrix();
   }
@@ -718,6 +1013,8 @@ export function createSunGlobe(canvas, options = {}) {
 
   function syncSun() {
     sunGroup.position.copy(target);
+    // Keep the full-disk frame facing the camera (corona stays readable).
+    if (mesh) mesh.quaternion.copy(camera.quaternion);
   }
 
   /** Extra home lift above safe-band center (CSS px for 0.375in = 1/4" + 1/8"). */
@@ -808,7 +1105,7 @@ export function createSunGlobe(canvas, options = {}) {
 
   function setCamDist(dist) {
     dist = THREE.MathUtils.clamp(dist, MIN_DIST, Math.max(homeDist, MIN_DIST + 0.2));
-    // Full un-zoom (max distance) → starting location + face-on orientation
+    // Full un-zoom → home framing (plate edge at screen edge).
     if (dist >= homeDist - 1e-4) {
       applyHomeFraming();
       return;
@@ -969,6 +1266,7 @@ export function createSunGlobe(canvas, options = {}) {
         applyHomeFraming();
       }
     } else setCamDist(homeDist * zoomFrac);
+    getLayoutMetrics();
   }
 
   function resetView() {
@@ -1056,24 +1354,15 @@ export function createSunGlobe(canvas, options = {}) {
       const t = e.touches[0];
       const fromStart = Math.hypot(t.clientX - oneFinger.sx, t.clientY - oneFinger.sy);
       if (fromStart > TAP_SLOP_PX) oneFinger.moved = true;
-      // Don't orbit until past tap slop (keeps tap clean)
+      // Don't scrub until past tap slop (keeps tap clean)
       if (!oneFinger.moved) return;
+      const nowMs = performance.now();
       const dx = t.clientX - oneFinger.x;
-      const dy = t.clientY - oneFinger.y;
-      const h = Math.max(height, 1);
-      const dist = camDist();
-      const z = THREE.MathUtils.clamp(
-        (dist - MIN_DIST) / Math.max(homeDist - MIN_DIST, 0.01),
-        0,
-        1
-      );
-      const speed = THREE.MathUtils.lerp(0.28, 0.55, z * z);
-      readSpherical();
-      spherical.theta -= (2 * Math.PI * dx * speed) / h;
-      spherical.phi -= (2 * Math.PI * dy * speed) / h;
-      writeCamera();
+      const dtMs = oneFinger.tMove ? nowMs - oneFinger.tMove : 16;
+      scrubMovieByPx(dx, dtMs);
       oneFinger.x = t.clientX;
       oneFinger.y = t.clientY;
+      oneFinger.tMove = nowMs;
     }
   }
 
@@ -1088,6 +1377,8 @@ export function createSunGlobe(canvas, options = {}) {
       oneFinger = { x, y, sx: x, sy: y, t0: Date.now(), moved: false };
     } else {
       fireTapIfAny(oneFinger);
+      // No flick coast — match the slider (stops when you stop).
+      scrubVel = 0;
       twoFinger = null;
       oneFinger = null;
     }
@@ -1181,20 +1472,19 @@ export function createSunGlobe(canvas, options = {}) {
     }
     const dx = e.clientX - mouseLast.x;
     const dy = e.clientY - mouseLast.y;
-    mouseLast = { x: e.clientX, y: e.clientY };
+    const nowMs = performance.now();
+    const dtMs = mouseLast.tMove ? nowMs - mouseLast.tMove : 16;
+    mouseLast = { x: e.clientX, y: e.clientY, tMove: nowMs };
     if (mouseMode === "pan") {
       panCamera(dx, dy);
     } else {
-      const h = Math.max(height, 1);
-      readSpherical();
-      spherical.theta -= (2 * Math.PI * dx * 0.5) / h;
-      spherical.phi -= (2 * Math.PI * dy * 0.5) / h;
-      writeCamera();
+      scrubMovieByPx(dx, dtMs);
     }
   }
 
   function onMouseUp() {
     fireTapIfAny(mouseGesture);
+    scrubVel = 0;
     mouseMode = null;
     mouseLast = null;
     mouseGesture = null;
@@ -1231,10 +1521,93 @@ export function createSunGlobe(canvas, options = {}) {
 
 
 
-  function setOrbiting(on) {
-    orbiting = !!on;
-    if (!orbiting) lastOrbitMs = 0;
+  function syncOrbitPhase() {
+    const n = Math.max(frameCount, 1);
+    orbitPhase01 = n > 1 ? orbitFrame / (n - 1) : 0;
+  }
+
+  /** True when `count` plates starting at fromIdx are decoded. */
+  function orbitAheadReady(fromIdx, count) {
+    const n = frameCount;
+    if (n < 1) return false;
+    const need = Math.min(count, n);
+    for (let k = 0; k < need; k++) {
+      if (!frameReady((fromIdx + k) % n)) return false;
+    }
+    return true;
+  }
+
+  function primeOrbitFrame() {
+    const n = Math.max(frameCount, 1);
+    if (frameIndex >= 0) orbitFrame = ((frameIndex % n) + n) % n;
+    else {
+      orbitFrame = Math.min(
+        n - 1,
+        Math.max(0, Math.round(clampPhase01(moviePhase01) * (n - 1)))
+      );
+    }
+    orbitHold = 0;
+    orbitClock = false;
+    syncOrbitPhase();
+  }
+
+  function warmOrbitWindow() {
+    ensureOrbitAhead();
+  }
+
+  function setOrbiting(on, opts = {}) {
+    const next = !!on;
+    const changed = next !== orbiting;
+    orbiting = next;
+    scrubVel = 0;
+    if (orbiting) {
+      const n = Math.max(frameCount, 1);
+      const from = Number(opts.fromFrame);
+      if (Number.isFinite(from) && n > 0) {
+        orbitFrame = ((Math.round(from) % n) + n) % n;
+        orbitHold = 0;
+        orbitClock = false;
+        syncOrbitPhase();
+      } else {
+        // Continue from the face already on screen. Clock waits for preroll.
+        primeOrbitFrame();
+      }
+      orbitFaceReady = paintFrameIndex(orbitFrame, true);
+      warmOrbitWindow();
+      // Start cutting as soon as the short preroll is already warm.
+      if (orbitAheadReady(orbitFrame, ORBIT_PREROLL)) {
+        orbitClock = true;
+        orbitHold = 0;
+      }
+    } else {
+      orbitFaceReady = false;
+      orbitClock = false;
+      orbitHold = 0;
+      // Stay on the Orbit face — adopt it as the new parked phase.
+      syncOrbitPhase();
+      moviePhase01 = clampPhase01(orbitPhase01);
+      when = phaseToDate(moviePhase01);
+      paintFrameIndex(orbitFrame, true);
+      applyEphemeris();
+    }
+    if (changed && typeof onOrbitChange === "function") onOrbitChange(orbiting);
     return orbiting;
+  }
+
+  /** True when the plate is showing the parked (slider/Live) phase frame. */
+  function isParkedFramePainted() {
+    if (frameCount < 1 || frameIndex < 0) return false;
+    const n = Math.max(frameCount, 1);
+    const want = Math.min(
+      n - 1,
+      Math.max(0, Math.round(clampPhase01(moviePhase01) * (n - 1)))
+    );
+    return frameIndex === want && frameReady(want);
+  }
+
+  function isFramePainted(i) {
+    const idx = i | 0;
+    return frameIndex === idx && frameReady(idx);
   }
 
   function isOrbiting() {
@@ -1244,19 +1617,61 @@ export function createSunGlobe(canvas, options = {}) {
   function animate(now) {
     if (disposed) return;
     animId = requestAnimationFrame(animate);
-    if (orbiting) {
-      const t = typeof now === "number" ? now : performance.now();
-      if (!lastOrbitMs) lastOrbitMs = t;
-      const dt = Math.min(0.05, (t - lastOrbitMs) / 1000);
-      lastOrbitMs = t;
-      if (dt > 0) {
-        readSpherical();
-        spherical.theta -= ORBIT_RAD_PER_SEC * dt;
-        writeCamera();
+    const t = typeof now === "number" ? now : performance.now();
+    if (!lastAnimMs) lastAnimMs = t;
+    const dt = Math.min(0.05, (t - lastAnimMs) / 1000);
+    lastAnimMs = t;
+    let advanced = false;
+    if (orbiting && dt > 0) {
+      // Stars: slow (~100s), continuous. Face: equal holds, one plate per beat.
+      // orbitPhase01 only — parked moviePhase01 / metrics stay put.
+      readSpherical();
+      spherical.theta -= ORBIT_RAD_PER_SEC * dt;
+      writeCamera();
+      const n = frameCount;
+      if (n > 0) {
+        ensureOrbitAhead();
+        if (!orbitClock) {
+          if (paintFrameIndex(orbitFrame)) orbitFaceReady = true;
+          if (orbitAheadReady(orbitFrame, ORBIT_PREROLL)) {
+            orbitClock = true;
+            orbitHold = 0;
+          }
+        } else {
+          const period = Math.max(orbitFaceSec, 1) / n;
+          orbitHold += dt;
+          // One plate per beat, never skip (skips read as stutter).
+          if (orbitHold >= period) {
+            const next = (orbitFrame + 1) % n;
+            if (frameReady(next)) {
+              orbitHold -= period;
+              if (orbitHold >= period) orbitHold = 0;
+              orbitFrame = next;
+              syncOrbitPhase();
+              paintFrameIndex(orbitFrame);
+              ensureOrbitAhead();
+            } else {
+              orbitHold = period;
+              loadFrame(next);
+            }
+          }
+        }
       }
+    } else if (!orbiting && scrubVel !== 0 && dt > 0) {
+      moviePhase01 = wrapPhase01(moviePhase01 + scrubVel * dt);
+      when = phaseToDate(moviePhase01);
+      const prev = frameIndex;
+      showFrameAtPhase(moviePhase01);
+      advanced = frameIndex !== prev;
+      const damp = Math.exp(-SCRUB_FRICTION * dt);
+      scrubVel *= damp;
+      if (Math.abs(scrubVel) < 0.02) scrubVel = 0;
+    }
+    if (phaseDirty || advanced) {
+      phaseDirty = false;
+      applyEphemeris();
     }
     syncSun();
-    updateAtmosphereLight(now);
     renderer.render(scene, camera);
   }
 
@@ -1277,10 +1692,67 @@ export function createSunGlobe(canvas, options = {}) {
     .catch(() => {});
 
   applyEphemeris();
-  loadLow();
+  loadMovie();
   fitToHost();
   applyHomeFraming();
   animate();
+
+  /** Host CSS px vs projected AIA plate edges (for sizing checks). */
+  function getLayoutMetrics() {
+    const host = canvas.parentElement;
+    const hostRect = host?.getBoundingClientRect?.() || {
+      width,
+      height,
+      left: 0,
+      top: 0,
+    };
+    const canvasRect = canvas.getBoundingClientRect();
+    let plateLeft = null;
+    let plateRight = null;
+    let plateCssW = null;
+    if (mesh && camera) {
+      mesh.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      const half = MOVIE.plane * 0.5;
+      const ndcToHostX = (ndcX) => {
+        const xCanvas = (ndcX * 0.5 + 0.5) * canvasRect.width + canvasRect.left;
+        return xCanvas - hostRect.left;
+      };
+      const left = new THREE.Vector3(-half, 0, 0).applyMatrix4(mesh.matrixWorld);
+      const right = new THREE.Vector3(half, 0, 0).applyMatrix4(mesh.matrixWorld);
+      left.project(camera);
+      right.project(camera);
+      plateLeft = ndcToHostX(left.x);
+      plateRight = ndcToHostX(right.x);
+      plateCssW = plateRight - plateLeft;
+    }
+    const hostW = hostRect.width;
+    const out = {
+      hostW,
+      hostH: hostRect.height,
+      innerW: window.innerWidth || 0,
+      plateCssW,
+      plateLeft,
+      plateRight,
+      gapL: plateLeft == null ? null : plateLeft,
+      gapR: plateRight == null ? null : hostW - plateRight,
+      ratio: plateCssW == null || !hostW ? null : plateCssW / hostW,
+      homeDist,
+      camDist: camDist(),
+      homeFill: HOME_FILL,
+      plane: MOVIE.plane,
+      cameraFov: camera?.fov,
+      bufferW,
+      bufferH,
+      panMarginPx,
+      width,
+      height,
+    };
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.sunLayout = JSON.stringify(out);
+    }
+    return out;
+  }
 
   return {
     resize,
@@ -1288,12 +1760,26 @@ export function createSunGlobe(canvas, options = {}) {
     resetView,
     setObserver,
     setTime,
+    setCyclePhase,
     setOrbiting,
     isOrbiting,
+    isParkedFramePainted,
+    isFramePainted,
+    getMovieWindow,
+    moviePhase01FromDate,
+    dateFromMoviePhase01,
+    setOrbitFaceSec(sec) {
+      const n = Number(sec);
+      if (!Number.isFinite(n)) return orbitFaceSec;
+      orbitFaceSec = THREE.MathUtils.clamp(n, 8, 180);
+      return orbitFaceSec;
+    },
+    getOrbitFaceSec: () => orbitFaceSec,
     getPhaseInfo,
     getObserver,
     setFlameParams,
     getFlameParams,
+    getLayoutMetrics,
     isReady: () => ready,
     dispose() {
       disposed = true;
@@ -1319,10 +1805,16 @@ export function createSunGlobe(canvas, options = {}) {
         atmosphere = null;
         atmosphereMat = null;
       }
+      frameImgs = [];
+      if (plateTex) {
+        plateTex.dispose();
+        plateTex = null;
+      }
+      plateCanvas = null;
+      plateCtx = null;
       if (mesh) {
         mesh.geometry.dispose();
-        material?.map?.dispose();
-        material?.normalMap?.dispose();
+        material?.uniforms?.uMap?.value?.dispose?.();
         material?.dispose();
       }
       if (starfield) {

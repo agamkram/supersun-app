@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump cache-bust queries on sun.js and the surface JPEG. No on-page build badge."""
+"""Bump cache-bust queries on sun.js and Carrington frame assets."""
 from __future__ import annotations
 
 import re
@@ -24,12 +24,41 @@ def write(n: int) -> None:
     index2, c1 = re.subn(r"\./sun\.js\?v=\d+", f"./sun.js?v={n}", index)
     if c1 != 1:
         raise SystemExit(f"index script query count {c1}")
+    index2 = re.sub(
+        r"carrington-171-poster\.jpg\?v=\d+",
+        f"carrington-171-poster.jpg?v={n}",
+        index2,
+    )
+    index2 = re.sub(r"frames\.json\?v=\d+", f"frames.json?v={n}", index2)
     INDEX.write_text(index2)
+
     sun = SUN.read_text()
-    sun2, c2 = re.subn(r"sun-2k\.jpg\?v=\d+", f"sun-2k.jpg?v={n}", sun)
-    if c2 != 1:
-        raise SystemExit(f"sun.js texture query count {c2}")
+    sun2, c2 = re.subn(
+        r'frames\.json\?v=\d+',
+        f"frames.json?v={n}",
+        sun,
+    )
+    sun2, c3 = re.subn(
+        r"carrington-171-poster\.jpg\?v=\d+",
+        f"carrington-171-poster.jpg?v={n}",
+        sun2,
+    )
+    sun2, c4 = re.subn(
+        r'\.jpg\?v=\d+"',
+        f'.jpg?v={n}"',
+        sun2,
+        count=1,
+    )
+    # frameUrl template: .jpg?v=N
+    sun2, c5 = re.subn(
+        r"(frames/\$\{String\(i\)\.padStart\(4, \"0\"\)\}\.jpg)\?v=\d+",
+        rf"\1?v={n}",
+        sun2,
+    )
+    if c2 != 1 or c3 != 1 or c5 != 1:
+        raise SystemExit(f"sun.js query counts meta={c2} poster={c3} frames={c5}")
     SUN.write_text(sun2)
+    print(f"v{n}")
 
 
 def main() -> None:
@@ -37,12 +66,13 @@ def main() -> None:
     if "--check" in sys.argv:
         sun = SUN.read_text()
         index = INDEX.read_text()
-        if f"./sun.js?v={n}" not in index or f"sun-2k.jpg?v={n}" not in sun:
-            raise SystemExit(f"v{n} is not consistent")
+        if f"./sun.js?v={n}" not in index:
+            raise SystemExit(f"v{n} is not consistent in index")
+        if f"frames.json?v={n}" not in sun:
+            raise SystemExit(f"v{n} frames.json missing in sun.js")
         print(f"v{n}")
         return
     write(n + 1)
-    print(f"v{n + 1}")
 
 
 if __name__ == "__main__":

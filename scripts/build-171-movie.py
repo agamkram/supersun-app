@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Bake a Carrington-rotation AIA 171 movie for SuperSun.
 
-One full solar turn of full-disk 171 frames (disk + real corona), every 2 hours,
-encoded as a ~12 second seamless loop — same idea as the GB loop
-(Sep 14 → Oct 11, 2-hour cadence, 12 seconds).
+One full solar turn of full-disk 171 frames (disk + real corona), every 1 hour,
+encoded as a ~12 second seamless loop. Skips / replaces bad frames. Caches by
+timestamp so rebakes do not re-download.
 
 Usage:
-  python3 scripts/build-171-movie.py           # fetch + encode
-  python3 scripts/build-171-movie.py --encode  # encode only from cache
-  python3 scripts/build-171-movie.py --limit 12  # smoke test
+  python3 scripts/build-171-movie.py              # sliding 27d window, fetch + encode
+  python3 scripts/build-171-movie.py --fixed      # pinned Sep14→Oct11 window
+  python3 scripts/build-171-movie.py --encode     # encode only from cache
+  python3 scripts/build-171-movie.py --limit 12   # smoke test
 """
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -20,28 +22,66 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parents[1]
-CACHE = ROOT / ".sun-cache" / "movie-2h"
+CACHE = ROOT / ".sun-cache" / "movie-1h"
+# Prior 2h bake — reuse even-hour slots so the first 1h run is ~half downloads.
+CACHE_LEGACY = ROOT / ".sun-cache" / "movie-2h"
 OUT_MP4 = ROOT / "carrington-171.mp4"
-OUT_WEBM = ROOT / "carrington-171.webm"
 OUT_POSTER = ROOT / "carrington-171-poster.jpg"
 OUT_META = ROOT / "movie.json"
+OUT_FRAMES = ROOT / "frames"
+OUT_FRAMES_META = ROOT / "frames.json"
 
 AIA171 = 10
-# Match the GB loop description: Sep 14 → Oct 11, one Carrington turn.
+# Sliding Carrington-length window (overwritten in main unless --fixed).
+WINDOW_DAYS = 27
 T0 = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
 T1 = datetime(2026, 10, 11, 0, 0, tzinfo=timezone.utc)
-STEP = timedelta(hours=2)
+STEP = timedelta(hours=1)
 DURATION_SEC = 12.0
-SIZE = 1536  # square full-disk; corona included in the frame
+SIZE = 2048  # above GB's 1024; phone-friendly
+# Match AIA's native FOV (~41′ / 2460″). Longer streamers are not in the
+# instrument; framing the plate to the screen hides that hard FOV edge.
+IMAGE_SCALE = 1.2
+SCRUB_SIZE = 1024
+# Try nearby times when the exact slot is junk (eclipse, blank, etc.).
+OFFSETS_MIN = (0, -30, 30, -60, 60, -90, 90, -120, 120)
 
 
 def which_ffmpeg() -> str:
     for name in ("ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
-        path = shutil.which(name) if "/" not in name else name
-        if path and Path(path).exists():
+        path = shutil.which(name) if "/" not in name else (name if Path(name).exists() else None)
+        if path:
             return path
-    raise SystemExit("ffmpeg not found — install with: brew install ffmpeg")
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as exc:
+        raise SystemExit(
+            "ffmpeg not found (no PATH binary, no imageio-ffmpeg)"
+        ) from exc
+
+
+def sliding_window(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """End at the last completed UTC hour; start WINDOW_DAYS earlier."""
+    now = now or datetime.now(timezone.utc)
+    t1 = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    t0 = t1 - timedelta(days=WINDOW_DAYS)
+    return t0, t1
+
+
+def resolve_window(argv: list[str]) -> tuple[datetime, datetime]:
+    """Default: sliding. --fixed keeps the pinned Sep14→Oct11 bake."""
+    if "--fixed" in argv:
+        return (
+            datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 11, 0, 0, tzinfo=timezone.utc),
+        )
+    return sliding_window()
 
 
 def frame_times() -> list[datetime]:
@@ -53,85 +93,187 @@ def frame_times() -> list[datetime]:
     return times
 
 
-def fetch_one(when: datetime, dest: Path) -> None:
-    if dest.exists() and dest.stat().st_size > 50_000:
-        return
+def is_good_frame(path: Path) -> bool:
+    """Reject dark/eclipse, blank, washed-out, or off-center junk."""
+    try:
+        im = Image.open(path).convert("L")
+    except Exception:
+        return False
+    if im.size[0] < SIZE // 2 or im.size[1] < SIZE // 2:
+        return False
+    arr = np.asarray(im, dtype=np.float32)
+    h, w = arr.shape
+    cy, cx = h / 2.0, w / 2.0
+    yy, xx = np.ogrid[:h, :w]
+    r = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+    rmax = 0.5 * min(h, w)
+    disk = arr[r < 0.32 * rmax * 2]
+    outer = arr[r > 0.92 * rmax]
+    if disk.size < 1000 or outer.size < 1000:
+        return False
+    d_mean = float(disk.mean())
+    d_std = float(disk.std())
+    o_mean = float(outer.mean())
+    lit = float((arr > 18.0).mean())
+    # Eclipse / missing data: disk too dark or flatter than noise.
+    if d_mean < 28.0 or d_std < 10.0:
+        return False
+    # Disk should outshine the black field.
+    if d_mean < o_mean * 2.2:
+        return False
+    # Too little lit area (empty) or whole frame lit (bad stretch / artifact).
+    if lit < 0.06 or lit > 0.85:
+        return False
+    return True
+
+
+def download_at(when: datetime, dest: Path) -> bool:
     date = when.strftime("%Y-%m-%dT%H:%M:%SZ")
-    # imageScale ~0.6″/px at 1536 keeps the full disk + corona in frame.
     url = (
         "https://api.helioviewer.org/v2/takeScreenshot/"
-        f"?imageScale=0.65&layers=[{AIA171},1,100]&events=&eventLabels=false"
+        f"?imageScale={IMAGE_SCALE}&layers=[{AIA171},1,100]&events=&eventLabels=false"
         f"&scale=false&date={date}&x0=0&y0=0&width={SIZE}&height={SIZE}"
         "&display=true&watermark=false"
     )
-    print("  download", date, flush=True)
     req = urllib.request.Request(url, headers={"User-Agent": "supersun-app-movie"})
-    part = dest.with_suffix(".part")
-    last_exc = None
+    # Unique temp per attempt so concurrent/old bakers cannot steal the file.
+    part = dest.with_name(f"{dest.stem}.{os.getpid()}.{when.strftime('%H%M%S')}.part")
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=120) as res:
+            with urllib.request.urlopen(req, timeout=180) as res:
                 part.write_bytes(res.read())
-            last_exc = None
             break
         except Exception as exc:
-            last_exc = exc
             part.unlink(missing_ok=True)
-            if attempt < 2:
-                print("  retry", date, attempt + 1, flush=True)
-    if last_exc:
-        raise SystemExit(f"download failed for {date}: {last_exc}") from last_exc
-    if part.stat().st_size < 50_000:
+            if attempt >= 2:
+                print(f"  fail {date}: {exc}", flush=True)
+                return False
+            print(f"  retry {date} ({attempt + 1})", flush=True)
+    if not part.exists() or part.stat().st_size < 40_000:
         part.unlink(missing_ok=True)
-        raise SystemExit(f"download too small for {date}")
-    part.replace(dest)
+        return False
+    if not is_good_frame(part):
+        print(f"  reject bad frame {date}", flush=True)
+        part.unlink(missing_ok=True)
+        return False
+    try:
+        os.replace(part, dest)
+    except FileNotFoundError:
+        part.unlink(missing_ok=True)
+        return False
+    return True
 
 
-def fetch_all(limit: int | None) -> list[Path]:
+def fetch_slot(slot: datetime, dest: Path) -> datetime | None:
+    """Fetch slot time or a nearby good substitute. Returns actual time used."""
+    if dest.exists() and dest.stat().st_size > 40_000 and is_good_frame(dest):
+        return slot
+    if dest.exists():
+        print(f"  cached frame failed quality — re-fetch {slot.isoformat()}", flush=True)
+        dest.unlink()
+
+    # Reuse 2h-cache plate when this hour was already baked.
+    legacy = CACHE_LEGACY / dest.name
+    if legacy.exists() and legacy.stat().st_size > 40_000 and is_good_frame(legacy):
+        CACHE.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy, dest)
+        print(f"  reuse 2h cache {dest.name}", flush=True)
+        return slot
+
+    for mins in OFFSETS_MIN:
+        when = slot + timedelta(minutes=mins)
+        print(
+            f"  try {when.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+            + (f" (slot{mins:+d}m)" if mins else ""),
+            flush=True,
+        )
+        if download_at(when, dest):
+            return when
+    return None
+
+
+def fetch_all(limit: int | None) -> tuple[list[Path], list[dict]]:
     CACHE.mkdir(parents=True, exist_ok=True)
     times = frame_times()
     if limit is not None:
         times = times[:limit]
-    paths = []
-    for i, when in enumerate(times):
-        dest = CACHE / f"{when.strftime('%Y%m%dT%H%M%S')}.jpg"
-        print(f"[{i + 1}/{len(times)}]", flush=True)
-        fetch_one(when, dest)
+    paths: list[Path] = []
+    log: list[dict] = []
+    for i, slot in enumerate(times):
+        dest = CACHE / f"{slot.strftime('%Y%m%dT%H%M%S')}.jpg"
+        print(f"[{i + 1}/{len(times)}] slot {slot.strftime('%Y-%m-%dT%H:%M:%SZ')}", flush=True)
+        used = fetch_slot(slot, dest)
+        if used is None:
+            print(f"  SKIP — no good frame near slot", flush=True)
+            log.append({"slot": slot.isoformat(), "status": "skip"})
+            continue
         paths.append(dest)
-    return paths
+        log.append(
+            {
+                "slot": slot.isoformat(),
+                "used": used.isoformat(),
+                "status": "ok" if used == slot else "substitute",
+            }
+        )
+    return paths, log
 
 
-def encode(paths: list[Path]) -> None:
+def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
     if len(paths) < 2:
-        raise SystemExit("need at least 2 frames to encode")
+        raise SystemExit("need at least 2 good frames to encode")
     ffmpeg = which_ffmpeg()
     fps = len(paths) / DURATION_SEC
     list_file = CACHE / "concat.txt"
-    # ffmpeg concat demuxer — one file per line
     list_file.write_text("".join(f"file '{p.resolve()}'\n" for p in paths))
     print(f"encode {len(paths)} frames → {DURATION_SEC:.0f}s @ {fps:.3f} fps", flush=True)
 
-    # Poster = middle frame
     mid = paths[len(paths) // 2]
-    shutil.copyfile(mid, OUT_POSTER)
+    # Real JPEG poster (cache files may be PNG bytes).
+    Image.open(mid).convert("RGB").save(OUT_POSTER, quality=90, optimize=True)
 
-    common = [
-        ffmpeg,
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-r",
-        f"{fps:.6f}",
-        "-i",
-        str(list_file),
-        "-vf",
-        "format=yuv420p",
-    ]
+    # Scrub plates for the live app (snappy drawImage path).
+    OUT_FRAMES.mkdir(parents=True, exist_ok=True)
+    for old in OUT_FRAMES.glob("*.jpg"):
+        old.unlink()
+    print(f"scrub plates → {OUT_FRAMES} @ {SCRUB_SIZE}px", flush=True)
+    for i, src in enumerate(paths):
+        im = Image.open(src).convert("RGB").resize(
+            (SCRUB_SIZE, SCRUB_SIZE), Image.Resampling.LANCZOS
+        )
+        im.save(OUT_FRAMES / f"{i:04d}.jpg", quality=82, optimize=True, progressive=True)
+        if i % 50 == 0:
+            print(f"  plate {i}/{len(paths)}", flush=True)
+    OUT_FRAMES_META.write_text(
+        json.dumps(
+            {
+                "count": len(paths),
+                "size": SCRUB_SIZE,
+                "start": T0.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "end": T1.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "durationSec": DURATION_SEC,
+                "imageScale": IMAGE_SCALE,
+                "bakeSize": SIZE,
+                "pattern": "frames/{i:04d}.jpg",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
     subprocess.check_call(
         [
-            *common,
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-r",
+            f"{fps:.6f}",
+            "-i",
+            str(list_file),
+            "-vf",
+            f"scale={SIZE}:{SIZE}:flags=lanczos,format=yuv420p",
             "-c:v",
             "libx264",
             "-preset",
@@ -144,57 +286,63 @@ def encode(paths: list[Path]) -> None:
             str(OUT_MP4),
         ]
     )
-    # WebM for Safari-friendly progressive where mp4 is awkward; Safari prefers mp4.
-    try:
-        subprocess.check_call(
-            [
-                *common,
-                "-c:v",
-                "libvpx-vp9",
-                "-b:v",
-                "0",
-                "-crf",
-                "28",
-                "-an",
-                str(OUT_WEBM),
-            ]
-        )
-    except subprocess.CalledProcessError:
-        print("webm encode skipped (vp9 unavailable)", flush=True)
-        if OUT_WEBM.exists():
-            OUT_WEBM.unlink()
 
+    skipped = sum(1 for e in (fetch_log or []) if e.get("status") == "skip")
+    subs = sum(1 for e in (fetch_log or []) if e.get("status") == "substitute")
     meta = {
         "kind": "carrington-171-loop",
         "source": "AIA 171 via Helioviewer",
         "start": T0.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "end": T1.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "stepHours": 2,
+        "stepHours": 1,
         "frames": len(paths),
+        "skipped": skipped,
+        "substituted": subs,
         "durationSec": DURATION_SEC,
         "fps": round(fps, 4),
         "size": SIZE,
+        "imageScale": IMAGE_SCALE,
         "file": OUT_MP4.name,
         "poster": OUT_POSTER.name,
+        "scrubFrames": len(paths),
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     OUT_META.write_text(json.dumps(meta, indent=2) + "\n")
     print("wrote", OUT_MP4, OUT_MP4.stat().st_size, flush=True)
+    print("wrote", OUT_FRAMES_META, flush=True)
     print("wrote", OUT_META, flush=True)
 
 
 def main() -> None:
+    global T0, T1
+    T0, T1 = resolve_window(sys.argv)
+    print(
+        f"window {T0.strftime('%Y-%m-%dT%H:%M:%SZ')} → "
+        f"{T1.strftime('%Y-%m-%dT%H:%M:%SZ')} "
+        f"({STEP.total_seconds() / 3600:.0f}h steps, {len(frame_times())} slots)",
+        flush=True,
+    )
     encode_only = "--encode" in sys.argv
     limit = None
     if "--limit" in sys.argv:
         limit = int(sys.argv[sys.argv.index("--limit") + 1])
+    fetch_log: list[dict] | None = None
     if encode_only:
-        paths = sorted(CACHE.glob("20*.jpg"))
+        slots = frame_times()
         if limit is not None:
-            paths = paths[:limit]
+            slots = slots[:limit]
+        paths = []
+        for slot in slots:
+            dest = CACHE / f"{slot.strftime('%Y%m%dT%H%M%S')}.jpg"
+            if dest.exists() and is_good_frame(dest):
+                paths.append(dest)
+            elif dest.exists():
+                print("drop bad cached", dest.name, flush=True)
+        print(f"encode-only: {len(paths)} good cached frames", flush=True)
     else:
-        paths = fetch_all(limit)
-    encode(paths)
+        paths, fetch_log = fetch_all(limit)
+        (CACHE / "fetch-log.json").write_text(json.dumps(fetch_log, indent=2) + "\n")
+    encode(paths, fetch_log)
 
 
 if __name__ == "__main__":
