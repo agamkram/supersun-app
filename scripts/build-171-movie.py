@@ -94,7 +94,7 @@ def frame_times() -> list[datetime]:
 
 
 def is_good_frame(path: Path) -> bool:
-    """Reject dark/eclipse, blank, washed-out, or off-center junk."""
+    """Reject dark/eclipse, blank, washed-out, dropout lines, or off-center junk."""
     try:
         im = Image.open(path).convert("L")
     except Exception:
@@ -124,6 +124,24 @@ def is_good_frame(path: Path) -> bool:
     # Too little lit area (empty) or whole frame lit (bad stretch / artifact).
     if lit < 0.06 or lit > 0.85:
         return False
+    # Horizontal dropout / missing scan lines (e.g. 2026-09-30 17:00Z).
+    streak = float(np.std(np.diff(arr.mean(axis=1))))
+    if streak > 0.55:
+        return False
+    # Hole in the disk (black block from a bad Helioviewer cut).
+    if float((disk < 8.0).mean()) > 0.02:
+        return False
+    y0, y1 = int(0.5 * h), int(0.85 * h)
+    x0, x1 = int(0.15 * w), int(0.55 * w)
+    if float((arr[y0:y1, x0:x1] < 8.0).mean()) > 0.12:
+        return False
+    # Severe registration shift — mild AIA drift (~2% of height) is normal.
+    wgt = np.clip(arr - 20.0, 0.0, None)
+    wsum = float(wgt.sum())
+    if wsum > 0:
+        bright_cy = float((yy * wgt).sum() / wsum)
+        if abs(bright_cy - cy) > 0.04 * h:
+            return False
     return True
 
 
