@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=93" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=93" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=94" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=94" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -178,20 +178,6 @@
       transition: none;
     }
     #sun-canvas:active { cursor: grabbing; }
-
-    .build-mark {
-      position: absolute;
-      z-index: 1;
-      left: max(0.35rem, env(safe-area-inset-left, 0px));
-      top: calc(env(safe-area-inset-top, 0px) + 0.06in);
-      margin: 0;
-      font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-      letter-spacing: 0.03em;
-      color: rgba(232, 244, 252, 0.8);
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
-      pointer-events: none;
-      white-space: nowrap;
-    }
 
     .chrome {
       position: fixed;
@@ -795,11 +781,6 @@
       border-color: #551010;
     }
 
-    body.is-red-mode .build-mark {
-      color: rgba(200, 24, 32, 0.9);
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
-    }
-
     body.is-red-mode .app-title {
       color: #c0141c;
       text-shadow: 0 1px 10px rgba(40, 0, 0, 0.7);
@@ -916,7 +897,6 @@
   </div>
 
   <header class="chrome">
-    <p class="build-mark" id="build-mark">c93 j93</p>
     <h1 class="app-title">SuperSun</h1>
   </header>
 
@@ -1036,7 +1016,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=93";
+    import { createSunGlobe } from "./sun.js?v=94";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
