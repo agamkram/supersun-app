@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=101",
-  poster: "carrington-171-poster.jpg?v=101",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=101`,
+  meta: "frames.json?v=106",
+  poster: "carrington-171-poster.jpg?v=106",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=106`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -492,10 +492,7 @@ export function createSunGlobe(canvas, options = {}) {
           vec3 col = texture2D(uMap, vUv).rgb * uGain;
           float luma = max(col.r, max(col.g, col.b));
           // Clear faint outer corona so stars can sit closer to the bright disk.
-          // Soft edge on the square frame eases the hard FOV cut.
           float a = smoothstep(0.028, 0.07, luma);
-          float rim = smoothstep(0.0, 0.02, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
-          a *= rim;
           if (a < 0.0015) discard;
           gl_FragColor = vec4(col * a, a);
         }
@@ -1014,17 +1011,19 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   /**
-   * Home: match plate *width* to host width so L/R AIA edges sit on the screen
-   * edges. Do not size against height — that overscanned L/R and looked huge.
+   * Home size: keep the square on screen.
+   * Portrait: match plate width to screen width (L/R edges on the sides).
+   * Landscape: match plate height to screen height so a wide window
+   * does not blow the Sun up to the long side.
    */
   function computeHomeDistance(w, h) {
     const vFov = THREE.MathUtils.degToRad(BASE_FOV);
     const aspect = Math.max(w, 1) / Math.max(h, 1);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
     const fitR = MOVIE.plane * 0.5;
-    // Full host width (no side pad) — L/R edges ↔ screen edges.
-    const distH = (fitR * w) / (HOME_FILL * w * Math.tan(hFov / 2));
-    return Math.max(distH, MIN_DIST + 0.2);
+    const distW = (fitR * w) / (HOME_FILL * w * Math.tan(hFov / 2));
+    const distHt = fitR / Math.tan(vFov / 2);
+    return Math.max(distW, distHt, MIN_DIST + 0.2);
   }
 
   function readSpherical() {
@@ -1251,35 +1250,69 @@ export function createSunGlobe(canvas, options = {}) {
   }
 
   function fitToHost() {
-    // Size to the real clip host so the canvas always fills edge-to-edge
-    // (window.innerHeight can be short of the fixed host on iOS).
+    // Window size is the orientation source of truth. After a rotate the
+    // host / visualViewport can sit on the *old* size for a frame; taking
+    // max() of mixed sources becomes a square and the Sun parks too close.
+    const iw = window.innerWidth || document.documentElement.clientWidth || 1;
+    const ih = window.innerHeight || document.documentElement.clientHeight || 1;
+    let w = iw;
+    let h = ih;
+    const viewLandscape = iw > ih;
     const host = canvas.parentElement;
-    let w = window.innerWidth || document.documentElement.clientWidth || 1;
-    let h = window.innerHeight || document.documentElement.clientHeight || 1;
     if (host) {
       const rect = host.getBoundingClientRect();
-      if (rect.width > 0) w = Math.max(w, rect.width);
-      if (rect.height > 0) h = Math.max(h, rect.height);
-      // If host stopped above the visual bottom (home-indicator band), extend
-      const gap = Math.max(0, (window.innerHeight || 0) - rect.bottom);
-      if (gap > 0 && gap < 80) h += gap;
+      const hostLandscape = rect.width > rect.height;
+      if (rect.width > 0 && rect.height > 0 && hostLandscape === viewLandscape) {
+        w = Math.max(w, rect.width);
+        h = Math.max(h, rect.height);
+      }
+      const gap = Math.max(0, ih - rect.bottom);
+      if (gap > 0 && gap < 80 && hostLandscape === viewLandscape) h += gap;
     }
     const vv = window.visualViewport;
-    if (vv) {
-      w = Math.max(w, vv.width || 0);
-      h = Math.max(h, vv.height || 0, (vv.offsetTop || 0) + (vv.height || 0));
+    if (vv && vv.width > 0 && vv.height > 0) {
+      const vvLandscape = vv.width > vv.height;
+      if (vvLandscape === viewLandscape) {
+        w = Math.max(w, vv.width);
+        h = Math.max(h, vv.height, (vv.offsetTop || 0) + vv.height);
+      }
     }
-    resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+    const nextW = Math.max(1, Math.round(w));
+    const nextH = Math.max(1, Math.round(h));
+    const flipped = width > 0 && height > 0 && nextW > nextH !== width > height;
+    resize(nextW, nextH, { forceHome: flipped });
   }
 
-  function resize(cssW, cssH) {
+  function applyHomeKeepYaw() {
+    homeLiftY = homeScreenOffsetY();
+    applyCanvasPanTransform();
+    readSpherical();
+    spherical.radius = homeDist;
+    writeCamera();
+    syncSun();
+    prevCamDist = homeDist;
+  }
+
+  function resize(cssW, cssH, opts = {}) {
     const w = Math.max(1, Math.round(cssW));
     const h = Math.max(1, Math.round(cssH));
-    if (w === width && h === height && bufferW > 0) return;
+    const sameSize = w === width && h === height && bufferW > 0;
+    if (sameSize && !opts.forceHome) {
+      const atHomeNow = camDist() >= homeDist * 0.97 && target.lengthSq() < 1e-4;
+      if (atHomeNow) {
+        homeLiftY = homeScreenOffsetY();
+        applyCanvasPanTransform();
+      }
+      return;
+    }
 
     const prevHome = homeDist;
     const dist = camDist();
-    const atHome = dist >= prevHome * 0.97 && target.lengthSq() < 1e-4;
+    const parked = target.lengthSq() < 1e-4;
+    const atHome =
+      parked &&
+      (dist >= prevHome * 0.97 ||
+        (opts.forceHome && dist >= computeHomeDistance(w, h) * 0.97));
     const zoomFrac = prevHome > 0 ? dist / prevHome : 1;
 
     width = w;
@@ -1321,13 +1354,7 @@ export function createSunGlobe(canvas, options = {}) {
     if (atHome) {
       if (orbiting) {
         // Keep yaw; iOS viewport resize would otherwise snap face-on
-        homeLiftY = homeScreenOffsetY();
-        applyCanvasPanTransform();
-        readSpherical();
-        spherical.radius = homeDist;
-        writeCamera();
-        syncSun();
-        prevCamDist = homeDist;
+        applyHomeKeepYaw();
       } else {
         applyHomeFraming();
       }

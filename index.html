@@ -64,7 +64,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="frames.json?v=101" as="fetch" crossorigin />
+  <link rel="preload" href="frames.json?v=106" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -216,7 +216,7 @@
      * The Sun zooms over this; un-zoom / Live to use the controls.
      */
     html.is-tablet {
-      --ipad-gesture-lift: 0.5in;
+      --ipad-gesture-lift: 0px;
     }
 
     .loc-bar {
@@ -1015,7 +1015,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=101";
+    import { createSunGlobe } from "./sun.js?v=106";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
@@ -1695,8 +1695,10 @@
     }
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", () => {
+      requestAnimationFrame(onResize);
       setTimeout(onResize, 50);
       setTimeout(onResize, 300);
+      setTimeout(onResize, 600);
     });
     window.visualViewport?.addEventListener("resize", onResize);
     window.addEventListener("pageshow", onResize);
