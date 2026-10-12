@@ -64,8 +64,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="carrington-171-poster.jpg?v=88" as="image" type="image/jpeg" />
-  <link rel="preload" href="frames.json?v=88" as="fetch" crossorigin />
+  <link rel="preload" href="carrington-171-poster.jpg?v=89" as="image" type="image/jpeg" />
+  <link rel="preload" href="frames.json?v=89" as="fetch" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Michroma&display=swap" rel="stylesheet" />
@@ -281,8 +281,8 @@
 
     .m-grid {
       display: grid;
-      /* When · Live · Carrington · Dist · Size */
-      grid-template-columns: 1.55fr 0.75fr 1.15fr 1.05fr 0.85fr;
+      /* Carrington · Dist · Size · When · Live */
+      grid-template-columns: 1.15fr 1.05fr 0.85fr 1.55fr 0.75fr;
       grid-auto-rows: var(--m-row-h);
       gap: 0;
       pointer-events: none;
@@ -495,7 +495,7 @@
       }
 
       .m-grid {
-        grid-template-columns: 1.55fr 0.75fr 1.15fr 1.05fr 0.85fr;
+        grid-template-columns: 1.15fr 1.05fr 0.85fr 1.55fr 0.75fr;
       }
 
       .m-cell-live .live-btn {
@@ -916,7 +916,7 @@
   </div>
 
   <header class="chrome">
-    <p class="build-mark" id="build-mark">c88 j88</p>
+    <p class="build-mark" id="build-mark">c89 j89</p>
     <h1 class="app-title">SuperSun</h1>
   </header>
 
@@ -939,7 +939,7 @@
 
   <div class="loc-bar" id="loc-bar">
     <div class="metrics-panel">
-      <!-- Row order: rise/high/set + tools, when/Live/Carrington, space weather -->
+      <!-- Row order: rise/high/set + tools, Carrington/Dist/Size/When/Live, space weather -->
       <div class="m-grid m-grid-rise" aria-label="Sunrise solar noon sunset day length and display controls">
         <button type="button" class="m-cell m-cell-fact" data-fact="rise" title="Tap for explanation">
           <div class="k">Sunrise</div>
@@ -979,13 +979,6 @@
         </div>
       </div>
       <div class="m-grid" aria-label="Solar metrics">
-        <div class="m-cell m-cell-when" aria-label="Face date and time">
-          <div class="k">When</div>
-          <div class="v sm" id="cycle-date">—</div>
-        </div>
-        <div class="m-cell m-cell-live">
-          <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
-        </div>
         <button type="button" class="m-cell m-cell-fact" data-fact="cycle" title="Tap for explanation">
           <div class="k">Carrington</div>
           <div class="v sm" id="m-cycle">—</div>
@@ -998,6 +991,13 @@
           <div class="k">Size</div>
           <div class="v sm" id="m-size">—</div>
         </button>
+        <div class="m-cell m-cell-when" aria-label="Face date and time">
+          <div class="k">When</div>
+          <div class="v sm" id="cycle-date">—</div>
+        </div>
+        <div class="m-cell m-cell-live">
+          <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
+        </div>
       </div>
       <div class="m-grid m-grid-3" aria-label="Space weather">
         <button type="button" class="m-cell m-cell-fact" data-fact="xray" title="Tap for explanation">
@@ -1036,7 +1036,7 @@
 
   <script src="astronomy.js"></script>
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=88";
+    import { createSunGlobe } from "./sun.js?v=89";
 
     const STORAGE_KEY = "sun-globe-loc-v1";
     const DEFAULT_LOC = { lat: 35.5956, lon: -82.5519, name: "Asheville, NC" };
