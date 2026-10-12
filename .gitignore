@@ -10,5 +10,6 @@ orient-compare-mirror.png
 
 __pycache__/
 .sun-cache/
+.hub-card-raw.png
 
 carrington-171.mp4

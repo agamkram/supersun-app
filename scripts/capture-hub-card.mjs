@@ -30,7 +30,14 @@ async function main() {
     executablePath: CHROME,
     headless: "new",
     ignoreHTTPSErrors: true,
-    args: ["--ignore-certificate-errors", "--hide-scrollbars"],
+    args: [
+      "--ignore-certificate-errors",
+      "--hide-scrollbars",
+      "--disable-http2",
+      "--disable-features=HttpsUpgrades",
+      "--use-gl=angle",
+      "--enable-webgl",
+    ],
   });
   try {
     const page = await browser.newPage();
@@ -53,14 +60,17 @@ async function main() {
       if (!g) return;
       if (g.isOrbiting?.()) g.setOrbiting(false);
       g.resetView?.();
+      // Stay on a frame already in the Orbit buffer — jumping to 0.42
+      // waits on a plate that has not been fetched yet.
       if (typeof g.setCyclePhase === "function") {
-        g.setCyclePhase(0.42, { paint: true });
-      } else if (typeof g.setMoviePhase === "function") {
-        g.setMoviePhase(0.42);
+        g.setCyclePhase(0.12, { paint: true });
       }
-      await new Promise((r) => setTimeout(r, 800));
     });
-    await new Promise((r) => setTimeout(r, 1500));
+    await page.waitForFunction(
+      () => window.__sunGlobe?.isParkedFramePainted?.() === true,
+      { timeout: 20000 }
+    ).catch(() => {});
+    await new Promise((r) => setTimeout(r, 800));
 
     const pngPath = path.join(ROOT, ".hub-card-raw.png");
     await page.screenshot({ path: pngPath, type: "png" });
