@@ -120,11 +120,13 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=85",
-  poster: "carrington-171-poster.jpg?v=85",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=85`,
+  meta: "frames.json?v=86",
+  poster: "carrington-171-poster.jpg?v=86",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=86`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
+  /** Plate brightness (toneMapped is off, so gain lives here). */
+  gain: 1.35,
   durationSec: 12,
   /** Bake window — overwritten from frames.json start/end when meta loads. */
   t0: Date.parse("2026-09-14T00:00:00Z"),
@@ -464,6 +466,7 @@ export function createSunGlobe(canvas, options = {}) {
     material = new THREE.ShaderMaterial({
       uniforms: {
         uMap: { value: map },
+        uGain: { value: MOVIE.gain },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -474,9 +477,10 @@ export function createSunGlobe(canvas, options = {}) {
       `,
       fragmentShader: `
         uniform sampler2D uMap;
+        uniform float uGain;
         varying vec2 vUv;
         void main() {
-          vec3 col = texture2D(uMap, vUv).rgb;
+          vec3 col = texture2D(uMap, vUv).rgb * uGain;
           float luma = max(col.r, max(col.g, col.b));
           // Fade empty sky for stars; soft plate rim eases the AIA FOV cut.
           float a = smoothstep(0.0, 0.014, luma);
