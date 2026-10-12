@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=99",
-  poster: "carrington-171-poster.jpg?v=99",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=99`,
+  meta: "frames.json?v=100",
+  poster: "carrington-171-poster.jpg?v=100",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=100`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -396,10 +396,11 @@ export function createSunGlobe(canvas, options = {}) {
   let frameLoadActive = 0;
   /** @type {number[]} */
   const frameLoadQueue = [];
-  /** Camera / starfield yaw — seconds per full turn (default ~100s). */
-  let orbitYawSec = 100;
-  /** +1 prograde (CCW from above), −1 the other way. */
-  let orbitYawSign = 1;
+  /**
+   * Camera / starfield yaw — locked at 0.75× of the old 100s turn (Dir / prograde).
+   * Stars drift opposite the Sun's left→right face motion.
+   */
+  const ORBIT_YAW_SEC = 100 / 0.75;
   /**
    * Face period during Orbit (seconds per full loop).
    * 649 plates @ 30s ≈ 46ms/cut (stutters). 60s ≈ 92ms — same pace as the old 2h@30s bake.
@@ -1692,9 +1693,7 @@ export function createSunGlobe(canvas, options = {}) {
       // Stars: slow (~100s), continuous. Face: equal holds, one plate per beat.
       // When / metrics follow orbitPhase01.
       readSpherical();
-      // Sign: +1 prograde (stars vs face), −1 the other way. Test button flips it.
-      const yawSec = Math.max(orbitYawSec, 8);
-      spherical.theta += orbitYawSign * ((2 * Math.PI) / yawSec) * dt;
+      spherical.theta += ((2 * Math.PI) / ORBIT_YAW_SEC) * dt;
       writeCamera();
       const n = frameCount;
       if (n > 0) {
@@ -1844,22 +1843,6 @@ export function createSunGlobe(canvas, options = {}) {
       return orbitFaceSec;
     },
     getOrbitFaceSec: () => orbitFaceSec,
-    setOrbitYawSec(sec) {
-      const n = Number(sec);
-      if (!Number.isFinite(n)) return orbitYawSec;
-      orbitYawSec = THREE.MathUtils.clamp(n, 8, 400);
-      return orbitYawSec;
-    },
-    getOrbitYawSec: () => orbitYawSec,
-    setOrbitYawSign(sign) {
-      orbitYawSign = Number(sign) < 0 ? -1 : 1;
-      return orbitYawSign;
-    },
-    getOrbitYawSign: () => orbitYawSign,
-    flipOrbitYawDir() {
-      orbitYawSign = orbitYawSign < 0 ? 1 : -1;
-      return orbitYawSign;
-    },
     getPhaseInfo,
     getObserver,
     setFlameParams,
