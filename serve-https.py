@@ -137,8 +137,13 @@ class Handler(SimpleHTTPRequestHandler):
         return super().guess_type(path)
 
     def end_headers(self):
-        path = (self.path or "").split("?", 1)[0].lower()
-        if path.endswith((".png", ".ico", ".webmanifest")) or path.endswith("manifest.webmanifest"):
+        path = (self.path or "/").split("?", 1)[0].lower()
+        # Match Vercel: baked plates are versioned (?v=N), so cache hard.
+        if path.endswith((".jpg", ".jpeg", ".webp", ".gif")):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        elif path.endswith((".png", ".ico", ".webmanifest")) or path.endswith(
+            "manifest.webmanifest"
+        ):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")

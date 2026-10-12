@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=92",
-  poster: "carrington-171-poster.jpg?v=92",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=92`,
+  meta: "frames.json?v=93",
+  poster: "carrington-171-poster.jpg?v=93",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.jpg?v=93`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -391,6 +391,11 @@ export function createSunGlobe(canvas, options = {}) {
   const ORBIT_PREROLL = 24;
   /** Keep this many plates ahead of the one on screen. */
   const ORBIT_LOOKAHEAD = 120;
+  /** Cap in-flight JPEG fetches — blasting 120 Image()s starves the playhead. */
+  const FRAME_LOAD_CONC = 6;
+  let frameLoadActive = 0;
+  /** @type {number[]} */
+  const frameLoadQueue = [];
   /** Camera / starfield yaw — same slow crawl as live globe (~100s/turn). */
   const ORBIT_RAD_PER_SEC = (2 * Math.PI) / 100;
   /**
@@ -731,35 +736,75 @@ export function createSunGlobe(canvas, options = {}) {
       .catch(() => {});
   }
 
-  function loadFrame(i) {
+  function pumpFrameLoads() {
+    while (frameLoadActive < FRAME_LOAD_CONC && frameLoadQueue.length) {
+      const idx = frameLoadQueue.shift();
+      if (idx == null) continue;
+      const img = frameImgs[idx];
+      if (!img || frameReady(idx)) continue;
+      if (typeof img.__beginLoad === "function") img.__beginLoad();
+    }
+  }
+
+  function loadFrame(i, opts = {}) {
     const idx = i | 0;
     if (idx < 0 || idx >= frameCount) return Promise.resolve(null);
     if (frameImgs[idx]?.complete && frameImgs[idx].naturalWidth) {
       return Promise.resolve(frameImgs[idx]);
     }
     // Reuse the in-flight request — restarting every rAF starved Orbit.
-    if (framePromises[idx]) return framePromises[idx];
+    if (framePromises[idx]) {
+      if (opts.priority && frameImgs[idx]?.dataset?.defer === "1") {
+        const q = frameLoadQueue.indexOf(idx);
+        if (q >= 0) frameLoadQueue.splice(q, 1);
+        frameLoadQueue.unshift(idx);
+        pumpFrameLoads();
+      }
+      return framePromises[idx];
+    }
     framePromises[idx] = new Promise((resolve) => {
       const img = new Image();
       img.decoding = "async";
-      const finish = () => {
-        frameImgs[idx] = img;
-        if (orbiting && idx === orbitFrame && paintFrameIndex(orbitFrame, true)) {
-          orbitFaceReady = true;
+      frameImgs[idx] = img;
+      let started = false;
+      const begin = () => {
+        if (started || frameReady(idx)) return;
+        started = true;
+        delete img.dataset.defer;
+        frameLoadActive += 1;
+        img.src = MOVIE.frameUrl(idx);
+      };
+      img.__beginLoad = begin;
+      const finish = (value) => {
+        if (started) {
+          started = false;
+          frameLoadActive = Math.max(0, frameLoadActive - 1);
         }
-        resolve(img);
+        delete img.__beginLoad;
+        if (value) {
+          frameImgs[idx] = value;
+          if (orbiting && idx === orbitFrame && paintFrameIndex(orbitFrame, true)) {
+            orbitFaceReady = true;
+          }
+        }
+        resolve(value);
+        pumpFrameLoads();
       };
       img.onload = () => {
         if (typeof img.decode === "function") {
-          img.decode().then(finish).catch(finish);
-        } else finish();
+          img.decode().then(() => finish(img)).catch(() => finish(img));
+        } else finish(img);
       };
       img.onerror = () => {
         framePromises[idx] = null;
-        resolve(null);
+        finish(null);
       };
-      img.src = MOVIE.frameUrl(idx);
-      frameImgs[idx] = img;
+      if (opts.priority || frameLoadActive < FRAME_LOAD_CONC) {
+        begin();
+      } else {
+        img.dataset.defer = "1";
+        frameLoadQueue.push(idx);
+      }
     });
     return framePromises[idx];
   }
@@ -769,37 +814,13 @@ export function createSunGlobe(canvas, options = {}) {
     const n = frameCount;
     if (n < 1) return;
     const ahead = Math.min(ORBIT_LOOKAHEAD, n);
-    for (let k = 0; k < ahead; k++) {
+    // Playhead first, then forward — queue caps concurrency.
+    loadFrame(orbitFrame, { priority: true });
+    for (let k = 1; k < ahead; k++) {
       const i = (orbitFrame + k) % n;
       if (!frameReady(i)) loadFrame(i);
     }
-  }
-
-  /** Load order starting at playhead, then outward (Orbit/scrub stay snappy). */
-  function frameLoadOrder(fromIdx) {
-    const n = Math.max(frameCount, 1);
-    const start = ((fromIdx % n) + n) % n;
-    const order = [start];
-    for (let d = 1; d < n; d++) {
-      order.push((start + d) % n);
-      if (order.length >= n) break;
-      order.push((start - d + n) % n);
-      if (order.length >= n) break;
-    }
-    return order;
-  }
-
-  async function prefetchFrames(fromIdx = 0) {
-    const conc = 8;
-    const order = frameLoadOrder(fromIdx);
-    let cursor = 0;
-    async function worker() {
-      while (!disposed && cursor < order.length) {
-        const i = order[cursor++];
-        await loadFrame(i);
-      }
-    }
-    await Promise.all(Array.from({ length: conc }, () => worker()));
+    pumpFrameLoads();
   }
 
   /** Sync parked phase + When from the Orbit playhead. */
