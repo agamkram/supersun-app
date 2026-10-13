@@ -64,10 +64,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="frames.json?v=108" as="fetch" crossorigin />
+  <link rel="preload" href="frames.json?v=109" as="fetch" crossorigin />
   <link rel="preload" href="fonts/michroma.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="fonts.css?v=108" />
+  <link rel="stylesheet" href="fonts.css?v=109" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" />
   <style>
@@ -254,14 +254,39 @@
     }
 
     .metrics-panel {
+      position: relative;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 10px;
-      padding: 0.18rem 0.14rem;
+      padding: 0.18rem 2.1rem 0.18rem 0.14rem;
       display: flex;
       flex-direction: column;
       gap: 0.06rem;
       pointer-events: none;
+    }
+
+    /* Frame warm-up count — bottom-right; rows sit left of it. */
+    .frame-load {
+      position: absolute;
+      right: 0.28rem;
+      bottom: 0.22rem;
+      z-index: 1;
+      margin: 0;
+      padding: 0;
+      font-family: var(--mono);
+      font-size: 8px;
+      font-weight: 500;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+      color: var(--faint);
+      text-align: right;
+      white-space: nowrap;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .frame-load.is-full {
+      color: var(--dim);
     }
 
     .m-grid {
@@ -1000,6 +1025,7 @@
           <div class="v sm" id="m-protons">—</div>
         </button>
       </div>
+      <div class="frame-load" id="frame-load" aria-live="polite" title="Loop frames loaded">—</div>
     </div>
   </div>
 
@@ -1014,7 +1040,7 @@
   </div>
 
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=108";
+    import { createSunGlobe } from "./sun.js?v=109";
 
     /** Load after the first sun image so open stays snappy. */
     let astronomyPromise = null;
@@ -1480,12 +1506,41 @@
       );
     }
 
+    const frameLoadEl = document.getElementById("frame-load");
+    let frameLoadTimer = 0;
+    let lastFrameLoadText = "";
+
+    function paintFrameLoad() {
+      if (!frameLoadEl || !globe?.getFrameLoadStats) return;
+      if (frameLoadTimer) {
+        clearTimeout(frameLoadTimer);
+        frameLoadTimer = 0;
+      }
+      const s = globe.getFrameLoadStats();
+      const total = s.total || 0;
+      const ready = s.ready || 0;
+      const text = total > 0 ? `${ready}/${total}` : "—";
+      if (text !== lastFrameLoadText) {
+        lastFrameLoadText = text;
+        frameLoadEl.textContent = text;
+        frameLoadEl.classList.toggle("is-full", total > 0 && ready >= total);
+        frameLoadEl.title =
+          total > 0
+            ? `${ready} of ${total} loop frames loaded`
+            : "Loop frames loading";
+      }
+      // Fast while warming; slow once full.
+      const ms = total > 0 && ready >= total ? 2000 : 250;
+      frameLoadTimer = window.setTimeout(paintFrameLoad, ms);
+    }
+
     const globe = createSunGlobe(canvas, {
       onReady() {
         canvas.classList.add("is-ready");
         status.textContent = "";
         status.style.display = "none";
         updateSpaceWeather(true);
+        paintFrameLoad();
         loadAstronomy()
           .then(() => {
             if (globe) showPhase(globe.getPhaseInfo());
@@ -1495,6 +1550,7 @@
       onQuality(kind) {
         // Boot Orbit after plate 0 is on the plate (single opening face).
         if (kind === "frames") tryStartOrbitBoot();
+        paintFrameLoad();
       },
       onPhase: showPhase,
       onOrbitChange(on) {
@@ -1511,6 +1567,7 @@
       },
     });
     window.__sunGlobe = globe;
+    paintFrameLoad();
 
     window.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;

@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=108",
-  poster: "carrington-171-poster.jpg?v=108",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=108`,
+  meta: "frames.json?v=109",
+  poster: "carrington-171-poster.jpg?v=109",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=109`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -668,6 +668,21 @@ export function createSunGlobe(canvas, options = {}) {
   function frameReady(i) {
     const img = frameImgs[i];
     return !!(img && img.complete && img.naturalWidth > 0);
+  }
+
+  /** How many loop frames are decoded and ready to paint. */
+  function getFrameLoadStats() {
+    const total = frameCount | 0;
+    let readyCount = 0;
+    for (let i = 0; i < total; i++) {
+      if (frameReady(i)) readyCount += 1;
+    }
+    return {
+      ready: readyCount,
+      total,
+      loading: frameLoadActive,
+      queued: frameLoadQueue.length,
+    };
   }
 
   function paintFrameIndex(i, force = false) {
@@ -1890,6 +1905,7 @@ export function createSunGlobe(canvas, options = {}) {
     setFlameParams,
     getFlameParams,
     getLayoutMetrics,
+    getFrameLoadStats,
     isReady: () => ready,
     dispose() {
       disposed = true;
