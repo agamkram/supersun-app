@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=115",
-  poster: "carrington-171-poster.jpg?v=115",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=115`,
+  meta: "frames.json?v=116",
+  poster: "carrington-171-poster.jpg?v=116",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=116`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -391,6 +391,8 @@ export function createSunGlobe(canvas, options = {}) {
   const ORBIT_PREROLL = 24;
   /** Keep this many plates ahead of the one on screen. */
   const ORBIT_LOOKAHEAD = 120;
+  /** Warm plates around the scrub target so drag stays continuous. */
+  const SCRUB_LOOKAHEAD = 24;
   /** Cap in-flight JPEG fetches — blasting 120 Image()s starves the playhead. */
   const FRAME_LOAD_CONC = 6;
   let frameLoadActive = 0;
@@ -702,11 +704,48 @@ export function createSunGlobe(canvas, options = {}) {
     return true;
   }
 
+  /** Closest decoded plate to `want` (bidirectional). -1 if none yet. */
+  function nearestReadyFrame(want) {
+    const n = frameCount | 0;
+    if (n < 1) return -1;
+    const idx = ((Math.round(want) % n) + n) % n;
+    if (frameReady(idx)) return idx;
+    for (let d = 1; d < n; d++) {
+      const a = (idx + d) % n;
+      const b = (idx - d + n) % n;
+      if (frameReady(a)) return a;
+      if (frameReady(b)) return b;
+    }
+    return -1;
+  }
+
+  /** Priority-load the scrub target and a small window around it. */
+  function ensureScrubAround(idx) {
+    const n = frameCount;
+    if (n < 1) return;
+    const center = ((idx % n) + n) % n;
+    loadFrame(center, { priority: true });
+    const ahead = Math.min(SCRUB_LOOKAHEAD, n - 1);
+    for (let k = 1; k <= ahead; k++) {
+      const a = (center + k) % n;
+      const b = (center - k + n) % n;
+      if (!frameReady(a)) loadFrame(a);
+      if (!frameReady(b)) loadFrame(b);
+    }
+    pumpFrameLoads();
+  }
+
   function showFrameAtPhase(p, force = false) {
     const n = Math.max(frameCount, 1);
     // clamp (not wrap): phase 1.0 is the last frame, not a snap to 0.
     const idx = Math.min(n - 1, Math.max(0, Math.round(clampPhase01(p) * (n - 1))));
-    return paintFrameIndex(idx, force);
+    if (paintFrameIndex(idx, force)) return true;
+    // Gap in the loop — keep the disk moving with the nearest ready plate
+    // while the exact target jumps the load queue.
+    const near = nearestReadyFrame(idx);
+    if (near >= 0) paintFrameIndex(near, force);
+    ensureScrubAround(idx);
+    return false;
   }
 
   function loadMovie() {
@@ -866,11 +905,11 @@ export function createSunGlobe(canvas, options = {}) {
       return lastPhaseInfo;
     }
     showFrameAtPhase(moviePhase01);
-    // If the frame isn't loaded yet, keep trying once it arrives.
-    if (frameIndex < 0 || !frameImgs[frameIndex]?.complete) {
-      const n = Math.max(frameCount, 1);
-      const idx = Math.min(n - 1, Math.max(0, Math.round(moviePhase01 * (n - 1))));
-      loadFrame(idx).then(() => {
+    // If the exact plate isn't up yet, paint nearest (above) and retry on load.
+    const n = Math.max(frameCount, 1);
+    const idx = Math.min(n - 1, Math.max(0, Math.round(moviePhase01 * (n - 1))));
+    if (!frameReady(idx)) {
+      loadFrame(idx, { priority: true }).then(() => {
         if (!disposed && !orbiting) showFrameAtPhase(moviePhase01);
       });
     }
@@ -899,7 +938,10 @@ export function createSunGlobe(canvas, options = {}) {
       syncOrbitPhase();
       adoptOrbitPhase();
       orbitHold = 0;
-      paintFrameIndex(orbitFrame, true);
+      if (!paintFrameIndex(orbitFrame, true)) {
+        const near = nearestReadyFrame(orbitFrame);
+        if (near >= 0) paintFrameIndex(near, true);
+      }
       ensureOrbitAhead();
       phaseDirty = true;
       if (typeof onScrub === "function") onScrub();
