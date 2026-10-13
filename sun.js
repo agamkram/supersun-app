@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=108",
-  poster: "carrington-171-poster.jpg?v=108",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=108`,
+  meta: "frames.json?v=107",
+  poster: "carrington-171-poster.jpg?v=107",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=107`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -387,16 +387,11 @@ export function createSunGlobe(canvas, options = {}) {
   let orbitHold = 0;
   /** Face clock runs only after the next plates are already decoded. */
   let orbitClock = false;
-  /** Frames that must be decoded before the first Orbit cut. */
+  /** Plates that must be decoded before the first cut. */
   const ORBIT_PREROLL = 24;
-  /**
-   * Keep this many frames ahead and behind the one on screen.
-   * Ahead matches the old Orbit buffer; behind keeps flick-back smooth.
-   * Frames outside this window are dropped so memory cannot grow without bound.
-   */
-  const FRAME_KEEP_AHEAD = 120;
-  const FRAME_KEEP_BEHIND = 120;
-  /** Cap in-flight image fetches — blasting dozens of Image()s starves the playhead. */
+  /** Keep this many plates ahead of the one on screen. */
+  const ORBIT_LOOKAHEAD = 120;
+  /** Cap in-flight JPEG fetches — blasting 120 Image()s starves the playhead. */
   const FRAME_LOAD_CONC = 6;
   let frameLoadActive = 0;
   /** @type {number[]} */
@@ -758,46 +753,6 @@ export function createSunGlobe(canvas, options = {}) {
     }
   }
 
-  function frameInKeepWindow(i, center) {
-    const n = frameCount;
-    if (n < 1) return false;
-    const idx = ((i % n) + n) % n;
-    const c = ((center % n) + n) % n;
-    const ahead = (idx - c + n) % n;
-    const behind = (c - idx + n) % n;
-    return ahead <= FRAME_KEEP_AHEAD || behind <= FRAME_KEEP_BEHIND;
-  }
-
-  function releaseFrame(i) {
-    const idx = i | 0;
-    if (idx < 0 || idx >= frameCount) return;
-    if (idx === frameIndex) return;
-    if (orbiting && idx === orbitFrame) return;
-    const img = frameImgs[idx];
-    framePromises[idx] = null;
-    frameImgs[idx] = null;
-    if (!img) return;
-    img.onload = null;
-    img.onerror = null;
-    delete img.__beginLoad;
-    delete img.dataset.defer;
-    // Drop decoded pixels; browser can reclaim memory.
-    img.src = "";
-  }
-
-  function trimFrameWindow(center) {
-    const n = frameCount;
-    if (n < 1) return;
-    for (let i = 0; i < n; i++) {
-      if (!frameInKeepWindow(i, center)) releaseFrame(i);
-    }
-    for (let q = frameLoadQueue.length - 1; q >= 0; q--) {
-      if (!frameInKeepWindow(frameLoadQueue[q], center)) {
-        frameLoadQueue.splice(q, 1);
-      }
-    }
-  }
-
   function loadFrame(i, opts = {}) {
     const idx = i | 0;
     if (idx < 0 || idx >= frameCount) return Promise.resolve(null);
@@ -821,8 +776,6 @@ export function createSunGlobe(canvas, options = {}) {
       let started = false;
       const begin = () => {
         if (started || frameReady(idx)) return;
-        // Dropped from the keep window while waiting in queue.
-        if (frameImgs[idx] !== img) return;
         started = true;
         delete img.dataset.defer;
         frameLoadActive += 1;
@@ -835,12 +788,6 @@ export function createSunGlobe(canvas, options = {}) {
           frameLoadActive = Math.max(0, frameLoadActive - 1);
         }
         delete img.__beginLoad;
-        // Released while in flight — do not reattach.
-        if (frameImgs[idx] !== img) {
-          resolve(null);
-          pumpFrameLoads();
-          return;
-        }
         if (value) {
           frameImgs[idx] = value;
           if (orbiting && idx === orbitFrame && paintFrameIndex(orbitFrame, true)) {
@@ -856,7 +803,7 @@ export function createSunGlobe(canvas, options = {}) {
         } else finish(img);
       };
       img.onerror = () => {
-        if (frameImgs[idx] === img) framePromises[idx] = null;
+        framePromises[idx] = null;
         finish(null);
       };
       if (opts.priority || frameLoadActive < FRAME_LOAD_CONC) {
@@ -869,47 +816,18 @@ export function createSunGlobe(canvas, options = {}) {
     return framePromises[idx];
   }
 
-  /** Warm ahead + behind the playhead; drop frames outside the window. */
-  function ensureFrameWindow(center) {
+  /** Kick missing plates ahead of the Orbit playhead (idempotent). */
+  function ensureOrbitAhead() {
     const n = frameCount;
     if (n < 1) return;
-    const c = ((center % n) + n) % n;
-    const ahead = Math.min(FRAME_KEEP_AHEAD, n);
-    const behind = Math.min(FRAME_KEEP_BEHIND, n);
-    loadFrame(c, { priority: true });
-    // Orbit / forward flick: fill ahead first. Reverse flick: fill behind first.
-    const reverseFirst = !orbiting && scrubVel < 0;
-    const fillAhead = () => {
-      for (let k = 1; k <= ahead; k++) {
-        const i = (c + k) % n;
-        if (!frameReady(i)) loadFrame(i);
-      }
-    };
-    const fillBehind = () => {
-      for (let k = 1; k <= behind; k++) {
-        const i = (c - k + n) % n;
-        if (!frameReady(i)) loadFrame(i);
-      }
-    };
-    if (reverseFirst) {
-      fillBehind();
-      fillAhead();
-    } else {
-      fillAhead();
-      fillBehind();
+    const ahead = Math.min(ORBIT_LOOKAHEAD, n);
+    // Playhead first, then forward — queue caps concurrency.
+    loadFrame(orbitFrame, { priority: true });
+    for (let k = 1; k < ahead; k++) {
+      const i = (orbitFrame + k) % n;
+      if (!frameReady(i)) loadFrame(i);
     }
-    trimFrameWindow(c);
     pumpFrameLoads();
-  }
-
-  /** Kick missing frames around the Orbit playhead (idempotent). */
-  function ensureOrbitAhead() {
-    ensureFrameWindow(orbitFrame);
-  }
-
-  function phaseFrameIndex(p) {
-    const n = Math.max(frameCount, 1);
-    return Math.min(n - 1, Math.max(0, Math.round(clampPhase01(p) * (n - 1))));
   }
 
   /** Sync parked phase + When from the Orbit playhead. */
@@ -933,11 +851,11 @@ export function createSunGlobe(canvas, options = {}) {
       return lastPhaseInfo;
     }
     showFrameAtPhase(moviePhase01);
-    const idx = phaseFrameIndex(moviePhase01);
-    ensureFrameWindow(idx);
     // If the frame isn't loaded yet, keep trying once it arrives.
     if (frameIndex < 0 || !frameImgs[frameIndex]?.complete) {
-      loadFrame(idx, { priority: true }).then(() => {
+      const n = Math.max(frameCount, 1);
+      const idx = Math.min(n - 1, Math.max(0, Math.round(moviePhase01 * (n - 1))));
+      loadFrame(idx).then(() => {
         if (!disposed && !orbiting) showFrameAtPhase(moviePhase01);
       });
     }
@@ -975,7 +893,6 @@ export function createSunGlobe(canvas, options = {}) {
     moviePhase01 = wrapPhase01(moviePhase01 + dPhase);
     when = phaseToDate(moviePhase01);
     showFrameAtPhase(moviePhase01);
-    ensureFrameWindow(phaseFrameIndex(moviePhase01));
     phaseDirty = true;
     if (sampleDtMs > 0) {
       const v = dPhase / (sampleDtMs / 1000);
@@ -1851,7 +1768,6 @@ export function createSunGlobe(canvas, options = {}) {
       when = phaseToDate(moviePhase01);
       const prev = frameIndex;
       showFrameAtPhase(moviePhase01);
-      ensureFrameWindow(phaseFrameIndex(moviePhase01));
       advanced = frameIndex !== prev;
       const damp = Math.exp(-SCRUB_FRICTION * dt);
       scrubVel *= damp;
