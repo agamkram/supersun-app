@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=109",
-  poster: "carrington-171-poster.jpg?v=109",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=109`,
+  meta: "frames.json?v=108",
+  poster: "carrington-171-poster.jpg?v=108",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=108`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -869,24 +869,20 @@ export function createSunGlobe(canvas, options = {}) {
     return framePromises[idx];
   }
 
-  /**
-   * Warm the keep window around `center`, then drop frames outside it.
-   * Orbit only fetches ahead (behind stays warm if already loaded, so reverse
-   * flick still works without stealing load slots from the playhead).
-   * Scrub fetches both ways.
-   */
-  function ensureFrameWindow(center, opts = {}) {
+  /** Warm ahead + behind the playhead; drop frames outside the window. */
+  function ensureFrameWindow(center) {
     const n = frameCount;
     if (n < 1) return;
     const c = ((center % n) + n) % n;
     const ahead = Math.min(FRAME_KEEP_AHEAD, n);
     const behind = Math.min(FRAME_KEEP_BEHIND, n);
-    const wantBehind = opts.behind !== false && !orbiting;
     loadFrame(c, { priority: true });
+    // Orbit / forward flick: fill ahead first. Reverse flick: fill behind first.
+    const reverseFirst = !orbiting && scrubVel < 0;
     const fillAhead = () => {
       for (let k = 1; k <= ahead; k++) {
         const i = (c + k) % n;
-        if (!frameReady(i)) loadFrame(i, k <= ORBIT_PREROLL ? { priority: true } : undefined);
+        if (!frameReady(i)) loadFrame(i);
       }
     };
     const fillBehind = () => {
@@ -895,22 +891,20 @@ export function createSunGlobe(canvas, options = {}) {
         if (!frameReady(i)) loadFrame(i);
       }
     };
-    // Reverse flick: behind first. Otherwise ahead first so Orbit never starves.
-    if (wantBehind && scrubVel < 0) {
+    if (reverseFirst) {
       fillBehind();
       fillAhead();
     } else {
       fillAhead();
-      if (wantBehind) fillBehind();
+      fillBehind();
     }
     trimFrameWindow(c);
     pumpFrameLoads();
   }
 
-  /** Kick missing frames ahead of the Orbit playhead (idempotent). */
+  /** Kick missing frames around the Orbit playhead (idempotent). */
   function ensureOrbitAhead() {
-    // Ahead only — do not fetch behind while Orbit owns the load budget.
-    ensureFrameWindow(orbitFrame, { behind: false });
+    ensureFrameWindow(orbitFrame);
   }
 
   function phaseFrameIndex(p) {
