@@ -64,10 +64,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="frames.json?v=109" as="fetch" crossorigin />
+  <link rel="preload" href="frames.json?v=110" as="fetch" crossorigin />
   <link rel="preload" href="fonts/michroma.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="fonts.css?v=109" />
+  <link rel="stylesheet" href="fonts.css?v=110" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" />
   <style>
@@ -254,25 +254,34 @@
     }
 
     .metrics-panel {
-      position: relative;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 10px;
-      padding: 0.18rem 2.1rem 0.18rem 0.14rem;
+      padding: 0.18rem 0.14rem;
       display: flex;
       flex-direction: column;
       gap: 0.06rem;
       pointer-events: none;
     }
 
-    /* Frame warm-up count — bottom-right; rows sit left of it. */
+    /* Only the space-weather row makes room for the load count. */
+    .m-weather-row {
+      display: flex;
+      align-items: stretch;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+
+    .m-weather-row .m-grid-3 {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
     .frame-load {
-      position: absolute;
-      right: 0.28rem;
-      bottom: 0.22rem;
-      z-index: 1;
+      flex: 0 0 auto;
+      align-self: flex-end;
       margin: 0;
-      padding: 0;
+      padding: 0 0.12rem 0.1rem 0;
       font-family: var(--mono);
       font-size: 8px;
       font-weight: 500;
@@ -318,14 +327,14 @@
       font-size: 9px;
     }
 
-    /* Space weather: X-ray + R·S·G a touch wider */
+    /* Space weather — trim X-ray / R·S·G / Kp so the load count fits on this row only */
     .m-grid-3 {
       grid-template-columns:
+        minmax(0, 0.9fr)
+        minmax(0, 1.05fr)
+        minmax(0, 0.7fr)
         minmax(0, 1.15fr)
-        minmax(0, 1.35fr)
-        minmax(0, 0.85fr)
-        minmax(0, 1.1fr)
-        minmax(0, 1fr);
+        minmax(0, 1.05fr);
       grid-auto-rows: var(--m-row-h);
       gap: 0;
     }
@@ -514,11 +523,11 @@
 
       .m-grid-3 {
         grid-template-columns:
+          minmax(0, 0.9fr)
+          minmax(0, 1.05fr)
+          minmax(0, 0.7fr)
           minmax(0, 1.15fr)
-          minmax(0, 1.35fr)
-          minmax(0, 0.85fr)
-          minmax(0, 1.1fr)
-          minmax(0, 1fr);
+          minmax(0, 1.05fr);
       }
 
       .m-cell .k {
@@ -1003,29 +1012,31 @@
           <button type="button" class="live-btn is-live" id="live-btn" title="Reset to the live Sun for now">Live</button>
         </div>
       </div>
-      <div class="m-grid m-grid-3" aria-label="Space weather">
-        <button type="button" class="m-cell m-cell-fact" data-fact="xray" title="Tap for explanation">
-          <div class="k">X-ray</div>
-          <div class="v sm" id="m-xray">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="scales" title="Tap for explanation">
-          <div class="k">R·S·G</div>
-          <div class="v sm" id="m-scales">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="kp" title="Tap for explanation">
-          <div class="k">Kp</div>
-          <div class="v sm" id="m-kp">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="wind" title="Tap for explanation">
-          <div class="k">Solar wind</div>
-          <div class="v sm" id="m-wind">—</div>
-        </button>
-        <button type="button" class="m-cell m-cell-fact" data-fact="protons" title="Tap for explanation">
-          <div class="k">Protons</div>
-          <div class="v sm" id="m-protons">—</div>
-        </button>
+      <div class="m-weather-row">
+        <div class="m-grid m-grid-3" aria-label="Space weather">
+          <button type="button" class="m-cell m-cell-fact" data-fact="xray" title="Tap for explanation">
+            <div class="k">X-ray</div>
+            <div class="v sm" id="m-xray">—</div>
+          </button>
+          <button type="button" class="m-cell m-cell-fact" data-fact="scales" title="Tap for explanation">
+            <div class="k">R·S·G</div>
+            <div class="v sm" id="m-scales">—</div>
+          </button>
+          <button type="button" class="m-cell m-cell-fact" data-fact="kp" title="Tap for explanation">
+            <div class="k">Kp</div>
+            <div class="v sm" id="m-kp">—</div>
+          </button>
+          <button type="button" class="m-cell m-cell-fact" data-fact="wind" title="Tap for explanation">
+            <div class="k">Solar wind</div>
+            <div class="v sm" id="m-wind">—</div>
+          </button>
+          <button type="button" class="m-cell m-cell-fact" data-fact="protons" title="Tap for explanation">
+            <div class="k">Protons</div>
+            <div class="v sm" id="m-protons">—</div>
+          </button>
+        </div>
+        <div class="frame-load" id="frame-load" aria-live="polite" title="Loop frames loaded">—</div>
       </div>
-      <div class="frame-load" id="frame-load" aria-live="polite" title="Loop frames loaded">—</div>
     </div>
   </div>
 
@@ -1040,7 +1051,7 @@
   </div>
 
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=109";
+    import { createSunGlobe } from "./sun.js?v=110";
 
     /** Load after the first sun image so open stays snappy. */
     let astronomyPromise = null;
