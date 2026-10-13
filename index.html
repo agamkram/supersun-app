@@ -64,10 +64,10 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=172" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=172" />
   <link rel="icon" href="favicon.ico?v=172" sizes="32x32" />
-  <link rel="preload" href="frames.json?v=110" as="fetch" crossorigin />
+  <link rel="preload" href="frames.json?v=112" as="fetch" crossorigin />
   <link rel="preload" href="fonts/michroma.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="fonts.css?v=110" />
+  <link rel="stylesheet" href="fonts.css?v=112" />
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="modulepreload" href="https://unpkg.com/three@0.160.0/build/three.module.min.js" />
   <style>
@@ -77,6 +77,7 @@
       --muted: #7eb8d8;
       --dim: #6aa8cc;
       --faint: #4a88a8;
+      --load-goal: #4ecf7a;
       --cell: transparent;
       --panel: rgba(18, 22, 30, 0.58);
       --line: rgba(42, 49, 64, 0.65);
@@ -249,7 +250,9 @@
 
     :root {
       --m-row-h: 1.7rem;
-      --m-cell-pad: 2px 0.4rem;
+      --m-cell-pad-y: 2px;
+      --m-cell-pad-x: 0.4rem;
+      --m-cell-pad: var(--m-cell-pad-y) var(--m-cell-pad-x);
       --m-cell-gap: 1px;
     }
 
@@ -268,7 +271,7 @@
     .m-weather-row {
       display: flex;
       align-items: stretch;
-      gap: 0.15rem;
+      gap: 0;
       min-width: 0;
     }
 
@@ -277,25 +280,50 @@
       min-width: 0;
     }
 
+    /* 1px from each weather cell → Frames (+5px). */
+    .m-weather-row .m-grid-3 > .m-cell {
+      padding-inline: max(0px, calc(var(--m-cell-pad-x) - 1px));
+    }
+
     .frame-load {
       flex: 0 0 auto;
-      align-self: flex-end;
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: stretch;
+      gap: var(--m-cell-gap);
       margin: 0;
-      padding: 0 0.12rem 0.1rem 0;
+      padding: var(--m-cell-pad-y) calc(var(--m-cell-pad-x) + 5px);
+      min-height: var(--m-row-h);
+      height: var(--m-row-h);
+      box-sizing: border-box;
+      box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.05);
+      text-align: right;
+      white-space: nowrap;
+      pointer-events: none;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .frame-load-nums {
       font-family: var(--mono);
       font-size: 8px;
       font-weight: 500;
       line-height: 1.1;
       letter-spacing: 0.02em;
       color: var(--faint);
-      text-align: right;
-      white-space: nowrap;
-      pointer-events: none;
-      user-select: none;
+      font-variant-numeric: tabular-nums;
     }
 
-    .frame-load.is-full {
-      color: var(--dim);
+    .frame-load-goal {
+      color: var(--load-goal);
+    }
+
+    .frame-load.is-full .k,
+    .frame-load.is-full .frame-load-ready,
+    .frame-load.is-full .frame-load-goal {
+      color: var(--load-goal);
     }
 
     .m-grid {
@@ -451,7 +479,8 @@
       background: rgba(255, 255, 255, 0.05);
     }
 
-    .m-cell .k {
+    .m-cell .k,
+    .frame-load .k {
       font-size: var(--label-size);
       font-weight: 500;
       letter-spacing: 0.02em;
@@ -495,7 +524,8 @@
     @media (pointer: coarse) and (min-width: 600px) and (min-height: 600px) {
       :root {
         --m-row-h: 2rem;
-        --m-cell-pad: 3px 0.45rem;
+        --m-cell-pad-y: 3px;
+        --m-cell-pad-x: 0.45rem;
         --m-cell-gap: 1px;
         --label-size: 9px;
       }
@@ -530,7 +560,8 @@
           minmax(0, 1.05fr);
       }
 
-      .m-cell .k {
+      .m-cell .k,
+      .frame-load .k {
         letter-spacing: 0.03em;
       }
 
@@ -588,7 +619,8 @@
 
       :root {
         --m-row-h: 1.35rem;
-        --m-cell-pad: 1px 0.28rem;
+        --m-cell-pad-y: 1px;
+        --m-cell-pad-x: 0.28rem;
         --m-cell-gap: 0;
         --label-size: 6.5px;
       }
@@ -772,6 +804,7 @@
       --muted: #9a1018;
       --dim: #7a0c10;
       --faint: #4a0608;
+      --load-goal: #9a1018;
       --cell: rgba(12, 0, 0, 0.58);
       --line: #4a0808;
       --hi: #e02028;
@@ -1035,7 +1068,10 @@
             <div class="v sm" id="m-protons">—</div>
           </button>
         </div>
-        <div class="frame-load" id="frame-load" aria-live="polite" title="Loop frames loaded">—</div>
+        <div class="frame-load" id="frame-load" aria-live="polite" title="Loop frames loaded">
+          <div class="k">Frames</div>
+          <div class="frame-load-nums" id="frame-load-nums">—</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1051,7 +1087,7 @@
   </div>
 
   <script type="module">
-    import { createSunGlobe } from "./sun.js?v=110";
+    import { createSunGlobe } from "./sun.js?v=112";
 
     /** Load after the first sun image so open stays snappy. */
     let astronomyPromise = null;
@@ -1518,11 +1554,12 @@
     }
 
     const frameLoadEl = document.getElementById("frame-load");
+    const frameLoadNumsEl = document.getElementById("frame-load-nums");
     let frameLoadTimer = 0;
     let lastFrameLoadText = "";
 
     function paintFrameLoad() {
-      if (!frameLoadEl || !globe?.getFrameLoadStats) return;
+      if (!frameLoadEl || !frameLoadNumsEl || !globe?.getFrameLoadStats) return;
       if (frameLoadTimer) {
         clearTimeout(frameLoadTimer);
         frameLoadTimer = 0;
@@ -1530,11 +1567,26 @@
       const s = globe.getFrameLoadStats();
       const total = s.total || 0;
       const ready = s.ready || 0;
+      const full = total > 0 && ready >= total;
       const text = total > 0 ? `${ready}/${total}` : "—";
       if (text !== lastFrameLoadText) {
         lastFrameLoadText = text;
-        frameLoadEl.textContent = text;
-        frameLoadEl.classList.toggle("is-full", total > 0 && ready >= total);
+        if (total > 0) {
+          frameLoadNumsEl.replaceChildren(
+            Object.assign(document.createElement("span"), {
+              className: "frame-load-ready",
+              textContent: String(ready),
+            }),
+            document.createTextNode("/"),
+            Object.assign(document.createElement("span"), {
+              className: "frame-load-goal",
+              textContent: String(total),
+            })
+          );
+        } else {
+          frameLoadNumsEl.textContent = "—";
+        }
+        frameLoadEl.classList.toggle("is-full", full);
         frameLoadEl.title =
           total > 0
             ? `${ready} of ${total} loop frames loaded`
