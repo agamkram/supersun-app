@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=110",
-  poster: "carrington-171-poster.jpg?v=110",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=110`,
+  meta: "frames.json?v=109",
+  poster: "carrington-171-poster.jpg?v=109",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=109`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
@@ -388,21 +388,19 @@ export function createSunGlobe(canvas, options = {}) {
   /** Face clock runs only after the next plates are already decoded. */
   let orbitClock = false;
   /** Frames that must be decoded before the first Orbit cut. */
-  const ORBIT_PREROLL = 16;
+  const ORBIT_PREROLL = 24;
   /**
-   * Keep-window sizes. Large both-ways buffers (120+120) crashed Safari
-   * (“A problem repeatedly occurred”) when flicking. Touch stays tighter.
+   * Keep this many frames ahead and behind the one on screen.
+   * Ahead matches the old Orbit buffer; behind keeps flick-back smooth.
+   * Frames outside this window are dropped so memory cannot grow without bound.
    */
-  const FRAME_KEEP_AHEAD = isTouch ? 48 : 72;
-  const FRAME_KEEP_BEHIND = isTouch ? 32 : 48;
+  const FRAME_KEEP_AHEAD = 120;
+  const FRAME_KEEP_BEHIND = 120;
   /** Cap in-flight image fetches — blasting dozens of Image()s starves the playhead. */
-  const FRAME_LOAD_CONC = isTouch ? 4 : 6;
+  const FRAME_LOAD_CONC = 6;
   let frameLoadActive = 0;
   /** @type {number[]} */
   const frameLoadQueue = [];
-  /** Last scrub window center — avoid re-queuing on every pointer sample. */
-  let lastWindowCenter = -1;
-  let lastWindowAt = 0;
   /** Redraw when something changed; skip GPU work while parked and still. */
   let needsDraw = true;
   function requestDraw() {
@@ -873,8 +871,9 @@ export function createSunGlobe(canvas, options = {}) {
 
   /**
    * Warm the keep window around `center`, then drop frames outside it.
-   * Orbit: ahead only (opts.behind false) so the playhead never starves.
-   * Scrub: both ways (opts.behind true) for flick-back.
+   * Orbit only fetches ahead (behind stays warm if already loaded, so reverse
+   * flick still works without stealing load slots from the playhead).
+   * Scrub fetches both ways.
    */
   function ensureFrameWindow(center, opts = {}) {
     const n = frameCount;
@@ -882,15 +881,12 @@ export function createSunGlobe(canvas, options = {}) {
     const c = ((center % n) + n) % n;
     const ahead = Math.min(FRAME_KEEP_AHEAD, n);
     const behind = Math.min(FRAME_KEEP_BEHIND, n);
-    const wantBehind = !!opts.behind;
-    const reverseFirst = wantBehind && (opts.reverse || scrubVel < 0);
+    const wantBehind = opts.behind !== false && !orbiting;
     loadFrame(c, { priority: true });
     const fillAhead = () => {
       for (let k = 1; k <= ahead; k++) {
         const i = (c + k) % n;
-        if (!frameReady(i)) {
-          loadFrame(i, k <= ORBIT_PREROLL ? { priority: true } : undefined);
-        }
+        if (!frameReady(i)) loadFrame(i, k <= ORBIT_PREROLL ? { priority: true } : undefined);
       }
     };
     const fillBehind = () => {
@@ -899,7 +895,8 @@ export function createSunGlobe(canvas, options = {}) {
         if (!frameReady(i)) loadFrame(i);
       }
     };
-    if (reverseFirst) {
+    // Reverse flick: behind first. Otherwise ahead first so Orbit never starves.
+    if (wantBehind && scrubVel < 0) {
       fillBehind();
       fillAhead();
     } else {
@@ -908,23 +905,6 @@ export function createSunGlobe(canvas, options = {}) {
     }
     trimFrameWindow(c);
     pumpFrameLoads();
-    lastWindowCenter = c;
-    lastWindowAt = performance.now();
-  }
-
-  /** Scrub path — throttle so a flick does not queue hundreds of loads. */
-  function ensureScrubWindow(center, reverse) {
-    const n = frameCount;
-    if (n < 1) return;
-    const c = ((center % n) + n) % n;
-    const now = performance.now();
-    const moved = lastWindowCenter < 0 ? 99 : Math.min(
-      (c - lastWindowCenter + n) % n,
-      (lastWindowCenter - c + n) % n
-    );
-    if (moved < 2 && now - lastWindowAt < 80) return;
-    if (moved < 6 && now - lastWindowAt < 32) return;
-    ensureFrameWindow(c, { behind: true, reverse: !!reverse });
   }
 
   /** Kick missing frames ahead of the Orbit playhead (idempotent). */
@@ -960,7 +940,7 @@ export function createSunGlobe(canvas, options = {}) {
     }
     showFrameAtPhase(moviePhase01);
     const idx = phaseFrameIndex(moviePhase01);
-    ensureScrubWindow(idx, false);
+    ensureFrameWindow(idx);
     // If the frame isn't loaded yet, keep trying once it arrives.
     if (frameIndex < 0 || !frameImgs[frameIndex]?.complete) {
       loadFrame(idx, { priority: true }).then(() => {
@@ -981,7 +961,6 @@ export function createSunGlobe(canvas, options = {}) {
     if (!Number.isFinite(dx) || dx === 0) return;
     const span = scrubSpanPx();
     const dPhase = dx / span;
-    const reverse = dPhase < 0;
     if (orbiting) {
       // Reposition Orbit playhead; clock keeps cutting from here.
       const n = Math.max(frameCount, 1);
@@ -994,8 +973,7 @@ export function createSunGlobe(canvas, options = {}) {
       adoptOrbitPhase();
       orbitHold = 0;
       paintFrameIndex(orbitFrame, true);
-      // Both ways while dragging; throttle keeps Safari memory in check.
-      ensureScrubWindow(orbitFrame, reverse);
+      ensureOrbitAhead();
       phaseDirty = true;
       if (typeof onScrub === "function") onScrub();
       return;
@@ -1003,7 +981,7 @@ export function createSunGlobe(canvas, options = {}) {
     moviePhase01 = wrapPhase01(moviePhase01 + dPhase);
     when = phaseToDate(moviePhase01);
     showFrameAtPhase(moviePhase01);
-    ensureScrubWindow(phaseFrameIndex(moviePhase01), reverse);
+    ensureFrameWindow(phaseFrameIndex(moviePhase01));
     phaseDirty = true;
     if (sampleDtMs > 0) {
       const v = dPhase / (sampleDtMs / 1000);
@@ -1879,7 +1857,7 @@ export function createSunGlobe(canvas, options = {}) {
       when = phaseToDate(moviePhase01);
       const prev = frameIndex;
       showFrameAtPhase(moviePhase01);
-      ensureScrubWindow(phaseFrameIndex(moviePhase01), scrubVel < 0);
+      ensureFrameWindow(phaseFrameIndex(moviePhase01));
       advanced = frameIndex !== prev;
       const damp = Math.exp(-SCRUB_FRICTION * dt);
       scrubVel *= damp;
