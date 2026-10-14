@@ -9,6 +9,7 @@ Usage:
   python3 scripts/build-171-movie.py              # sliding 27d window, fetch + encode
   python3 scripts/build-171-movie.py --fixed      # pinned Sep14→Oct11 window
   python3 scripts/build-171-movie.py --encode     # encode only from cache
+  python3 scripts/build-171-movie.py --no-mp4     # scrub frames + meta only (CI)
   python3 scripts/build-171-movie.py --limit 12   # smoke test
 """
 from __future__ import annotations
@@ -236,13 +237,10 @@ def fetch_all(limit: int | None) -> tuple[list[Path], list[dict]]:
     return paths, log
 
 
-def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
+def encode(paths: list[Path], fetch_log: list[dict] | None = None, *, no_mp4: bool = False) -> None:
     if len(paths) < 2:
         raise SystemExit("need at least 2 good frames to encode")
-    ffmpeg = which_ffmpeg()
     fps = len(paths) / DURATION_SEC
-    list_file = CACHE / "concat.txt"
-    list_file.write_text("".join(f"file '{p.resolve()}'\n" for p in paths))
     print(f"encode {len(paths)} frames → {DURATION_SEC:.0f}s @ {fps:.3f} fps", flush=True)
 
     mid = paths[len(paths) // 2]
@@ -278,32 +276,39 @@ def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
         + "\n"
     )
 
-    subprocess.check_call(
-        [
-            ffmpeg,
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-r",
-            f"{fps:.6f}",
-            "-i",
-            str(list_file),
-            "-vf",
-            f"scale={SIZE}:{SIZE}:flags=lanczos,format=yuv420p",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "slow",
-            "-crf",
-            "18",
-            "-movflags",
-            "+faststart",
-            "-an",
-            str(OUT_MP4),
-        ]
-    )
+    if no_mp4:
+        print("skip mp4 (--no-mp4); scrub frames are enough for the app", flush=True)
+    else:
+        ffmpeg = which_ffmpeg()
+        list_file = CACHE / "concat.txt"
+        list_file.write_text("".join(f"file '{p.resolve()}'\n" for p in paths))
+        subprocess.check_call(
+            [
+                ffmpeg,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-r",
+                f"{fps:.6f}",
+                "-i",
+                str(list_file),
+                "-vf",
+                f"scale={SIZE}:{SIZE}:flags=lanczos,format=yuv420p",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "slow",
+                "-crf",
+                "18",
+                "-movflags",
+                "+faststart",
+                "-an",
+                str(OUT_MP4),
+            ]
+        )
+        print("wrote", OUT_MP4, OUT_MP4.stat().st_size, flush=True)
 
     skipped = sum(1 for e in (fetch_log or []) if e.get("status") == "skip")
     subs = sum(1 for e in (fetch_log or []) if e.get("status") == "substitute")
@@ -326,9 +331,13 @@ def encode(paths: list[Path], fetch_log: list[dict] | None = None) -> None:
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     OUT_META.write_text(json.dumps(meta, indent=2) + "\n")
-    print("wrote", OUT_MP4, OUT_MP4.stat().st_size, flush=True)
     print("wrote", OUT_FRAMES_META, flush=True)
     print("wrote", OUT_META, flush=True)
+    print(
+        f"covered window {T0.strftime('%Y-%m-%dT%H:%M:%SZ')} → "
+        f"{T1.strftime('%Y-%m-%dT%H:%M:%SZ')} ({len(paths)} frames)",
+        flush=True,
+    )
 
 
 def main() -> None:
@@ -341,6 +350,7 @@ def main() -> None:
         flush=True,
     )
     encode_only = "--encode" in sys.argv
+    no_mp4 = "--no-mp4" in sys.argv
     limit = None
     if "--limit" in sys.argv:
         limit = int(sys.argv[sys.argv.index("--limit") + 1])
@@ -360,7 +370,8 @@ def main() -> None:
     else:
         paths, fetch_log = fetch_all(limit)
         (CACHE / "fetch-log.json").write_text(json.dumps(fetch_log, indent=2) + "\n")
-    encode(paths, fetch_log)
+    encode(paths, fetch_log, no_mp4=no_mp4)
+    subprocess.check_call([sys.executable, str(ROOT / "scripts" / "bump-version.py")])
 
 
 if __name__ == "__main__":

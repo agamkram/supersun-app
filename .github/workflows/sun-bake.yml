@@ -1,5 +1,8 @@
-# Daily AIA 171 surface bake. GitHub runners run `python3 scripts/build-171.py --sdo`.
-# Vercel deploys from main when sun-2k.jpg / cache-bust queries change.
+# Daily SuperSun bake. GitHub runners:
+#   1) sliding Carrington frames — `python3 scripts/build-171-movie.py --no-mp4`
+#      (bake day back ~27 days → frames/ + frames.json; Live/When follow this window)
+#   2) globe surface — `python3 scripts/build-171.py --sdo` → sun-2k.jpg
+# Vercel deploys from main when those files / cache-bust queries change.
 #
 # Kickoff ~9:47 America/New_York (after 12:00 UTC SDO; staggered after
 # GlobalFlows 8:47, Heat 9:17, Orbital View 9:23). Odd minute to reduce
@@ -13,7 +16,7 @@
 #   BAKE_SMTP_USER   SMTP login (usually the Gmail address)
 #   BAKE_SMTP_PASS   app password (not the normal Gmail password)
 # Without mail secrets the bake still ships; before/after is always in the job summary.
-name: Surface bake
+name: Sun bake
 
 on:
   schedule:
@@ -35,9 +38,10 @@ concurrency:
 
 jobs:
   bake:
-    name: Bake Sun surface
+    name: Bake Carrington + surface
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Cold cache can take a while; warm movie-1h cache is mostly today's new hours.
+    timeout-minutes: 360
     env:
       TZ: America/New_York
       GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -55,7 +59,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Restore SDO frame cache
+      - name: Restore SDO / movie frame cache
         uses: actions/cache@v4
         with:
           path: .sun-cache
@@ -71,17 +75,38 @@ jobs:
           set -euo pipefail
           python3 scripts/bump-version.py --check > /tmp/sun-before-v.txt
           wc -c < sun-2k.jpg | tr -d ' ' > /tmp/sun-before-bytes.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          meta = json.loads(Path("frames.json").read_text())
+          Path("/tmp/sun-before-frames.txt").write_text(
+              f"{meta.get('start','?')} → {meta.get('end','?')} ({meta.get('count','?')} frames)\n"
+          )
+          PY
 
-      - name: Bake AIA 171 surface
-        id: bake
+      - name: Bake sliding Carrington frames
+        id: frames
         continue-on-error: true
         run: |
           set -euo pipefail
-          if python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-bake.log; then
-            echo "Bake succeeded."
+          if python3 scripts/build-171-movie.py --no-mp4 2>&1 | tee /tmp/sun-frames.log; then
+            echo "Frames bake succeeded."
           else
-            echo "Bake exited non-zero. Retrying once..."
-            python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-bake.log
+            echo "Frames bake exited non-zero. Retrying once..."
+            python3 scripts/build-171-movie.py --no-mp4 2>&1 | tee /tmp/sun-frames.log
+          fi
+
+      - name: Bake AIA 171 surface
+        id: surface
+        if: steps.frames.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-surface.log; then
+            echo "Surface bake succeeded."
+          else
+            echo "Surface bake exited non-zero. Retrying once..."
+            python3 scripts/build-171.py --sdo 2>&1 | tee /tmp/sun-surface.log
           fi
 
       - name: Write before/after report
@@ -91,24 +116,46 @@ jobs:
           set -euo pipefail
           before_v="$(cat /tmp/sun-before-v.txt 2>/dev/null || echo unknown)"
           before_b="$(cat /tmp/sun-before-bytes.txt 2>/dev/null || echo 0)"
+          before_f="$(cat /tmp/sun-before-frames.txt 2>/dev/null | tr -d '\n' || echo unknown)"
           if [ -f sun-2k.jpg ]; then
             after_b="$(wc -c < sun-2k.jpg | tr -d ' ')"
           else
             after_b=0
           fi
           after_v="$(python3 scripts/bump-version.py --check 2>/dev/null || echo unknown)"
-          covered="$(grep -E '^covered ' /tmp/sun-bake.log 2>/dev/null | tail -1 || true)"
-          wrote="$(grep -E '^wrote ' /tmp/sun-bake.log 2>/dev/null | tail -1 || true)"
+          after_f="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("frames.json")
+          if not p.exists():
+              print("missing")
+          else:
+              meta = json.loads(p.read_text())
+              print(f"{meta.get('start','?')} → {meta.get('end','?')} ({meta.get('count','?')} frames)")
+          PY
+          )"
+          covered="$(grep -E '^covered ' /tmp/sun-surface.log 2>/dev/null | tail -1 || true)"
+          window="$(grep -E '^covered window ' /tmp/sun-frames.log 2>/dev/null | tail -1 || true)"
+          wrote="$(grep -E '^wrote ' /tmp/sun-surface.log 2>/dev/null | tail -1 || true)"
+          frames_ok="${{ steps.frames.outcome }}"
+          surface_ok="${{ steps.surface.outcome }}"
           {
-            if [ "${{ steps.bake.outcome }}" != "success" ]; then
-              echo "SuperSun surface bake · FAIL"
+            if [ "$frames_ok" != "success" ]; then
+              echo "SuperSun bake · FAIL"
               echo
-              echo "Bake failed (download, coverage, poles, or file size). Yesterday's picture stays."
+              echo "Carrington frames bake failed. Yesterday's loop stays."
+            elif [ "$surface_ok" != "success" ]; then
+              echo "SuperSun bake · PARTIAL"
+              echo
+              echo "Frames ok; surface failed. New loop ships; yesterday's globe texture stays."
             else
-              echo "SuperSun surface bake · SUCCESS"
+              echo "SuperSun bake · SUCCESS"
               echo
             fi
             echo "version ${before_v} → ${after_v}"
+            echo "frames ${before_f}"
+            echo "     → ${after_f}"
+            [ -n "${window}" ] && echo "${window}"
             echo "sun-2k.jpg ${before_b} → ${after_b} bytes"
             [ -n "${covered}" ] && echo "${covered}"
             [ -n "${wrote}" ] && echo "${wrote}"
@@ -122,18 +169,18 @@ jobs:
           } > /tmp/bake-report.md
           cat /tmp/bake-report.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Require bake
+      - name: Require Carrington frames
         id: gate
         if: always()
         run: |
           set -euo pipefail
-          if [ "${{ steps.bake.outcome }}" != "success" ]; then
-            echo "::error::Sun surface bake failed."
+          if [ "${{ steps.frames.outcome }}" != "success" ]; then
+            echo "::error::Sun Carrington frames bake failed."
             exit 1
           fi
-          echo "Bake succeeded."
+          echo "Frames bake succeeded."
 
-      - name: Commit and push surface files
+      - name: Commit and push bake files
         id: commit
         if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
         run: |
@@ -142,26 +189,32 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          files=(
-            sun-2k.jpg
-            surface.json
-            index.html
+          # frames/ may gain or lose plates when the window slides
+          git add -A -- frames
+          git add -- \
+            frames.json \
+            carrington-171-poster.jpg \
+            movie.json \
+            sun-2k.jpg \
+            surface.json \
+            index.html \
             sun.js
-          )
-
-          git add -- "${files[@]}"
 
           if git diff --cached --quiet; then
-            echo "No surface file changes — nothing to commit."
+            echo "No bake file changes — nothing to commit."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           extra="$(git diff --cached --name-only | grep -v \
-            -e '^sun-2k.jpg$' \
-            -e '^surface.json$' \
-            -e '^index.html$' \
-            -e '^sun.js$' \
+            -e '^frames/' \
+            -e '^frames\.json$' \
+            -e '^carrington-171-poster\.jpg$' \
+            -e '^movie\.json$' \
+            -e '^sun-2k\.jpg$' \
+            -e '^surface\.json$' \
+            -e '^index\.html$' \
+            -e '^sun\.js$' \
             || true)"
           if [ -n "${extra}" ]; then
             echo "::error::Refusing to commit unexpected staged files:"
@@ -170,7 +223,7 @@ jobs:
           fi
 
           date_label="$(LC_TIME=C date '+%-d %b %Y')"
-          git commit -m "Refresh SuperSun surface bake for ${date_label}."
+          git commit -m "Refresh SuperSun Carrington bake for ${date_label}."
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"
         env:
@@ -189,7 +242,7 @@ jobs:
           secure: false
           username: ${{ env.BAKE_SMTP_USER }}
           password: ${{ env.BAKE_SMTP_PASS }}
-          subject: ${{ steps.gate.outcome == 'success' && 'SuperSun surface bake · SUCCESS' || 'SuperSun surface bake · FAIL' }}
+          subject: ${{ steps.gate.outcome == 'success' && (steps.surface.outcome == 'success' && 'SuperSun bake · SUCCESS' || 'SuperSun bake · PARTIAL') || 'SuperSun bake · FAIL' }}
           to: ${{ env.BAKE_NOTIFY_TO }}
           from: SuperSun bake <${{ env.BAKE_SMTP_USER }}>
           body: file:///tmp/bake-report.txt
