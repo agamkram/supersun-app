@@ -1,8 +1,8 @@
 {
   "kind": "carrington-171-loop",
   "source": "AIA 171 via Helioviewer",
-  "start": "2026-09-21T15:00:00Z",
-  "end": "2026-10-18T15:00:00Z",
+  "start": "2026-09-22T18:00:00Z",
+  "end": "2026-10-19T18:00:00Z",
   "stepHours": 1,
   "frames": 649,
   "skipped": 0,
@@ -14,5 +14,5 @@
   "file": "carrington-171.mp4",
   "poster": "carrington-171-poster.jpg",
   "scrubFrames": 649,
-  "built": "2026-10-18T17:01:52Z"
+  "built": "2026-10-19T19:36:37Z"
 }
