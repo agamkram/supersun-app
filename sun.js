@@ -120,9 +120,9 @@ function createStarfield() {
 
 /** Full-disk AIA 171 loop — JPEG frames (snappy scrub) on the starfield. */
 const MOVIE = {
-  meta: "frames.json?v=134",
-  poster: "carrington-171-poster.jpg?v=134",
-  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=134`,
+  meta: "frames.json?v=136",
+  poster: "carrington-171-poster.jpg?v=136",
+  frameUrl: (i) => `frames/${String(i).padStart(4, "0")}.webp?v=136`,
   /** World size of the square AIA plate; home fits this to the screen. */
   plane: 2.35,
   /** Plate brightness (toneMapped is off, so gain lives here). */
