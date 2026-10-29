@@ -48,8 +48,14 @@ SIZE = 2048  # above GB's 1024; phone-friendly
 # instrument; framing the plate to the screen hides that hard FOV edge.
 IMAGE_SCALE = 1.2
 SCRUB_SIZE = 1024
-# Try nearby times when the exact slot is junk (eclipse, blank, etc.).
-OFFSETS_MIN = (0, -30, 30, -60, 60, -90, 90, -120, 120)
+# Try nearby times when the exact slot is junk (eclipse, blank, smear).
+# Step 10 minutes. A broken hour often has a sharp plate 20 minutes off,
+# which a half-hour search never reaches, so it keeps the smeared neighbor.
+OFFSETS_MIN = tuple(
+    off
+    for step in range(0, 13)
+    for off in ((0,) if step == 0 else (-10 * step, 10 * step))
+)
 
 
 def which_ffmpeg() -> str:
@@ -94,14 +100,14 @@ def frame_times() -> list[datetime]:
     return times
 
 
-def is_good_frame(path: Path) -> bool:
-    """Reject dark/eclipse, blank, washed-out, dropout lines, or off-center junk."""
+def frame_problem(path: Path) -> str | None:
+    """None when the plate is usable. A short reason otherwise."""
     try:
         im = Image.open(path).convert("L")
     except Exception:
-        return False
+        return "unreadable"
     if im.size[0] < SIZE // 2 or im.size[1] < SIZE // 2:
-        return False
+        return "too small"
     arr = np.asarray(im, dtype=np.float32)
     h, w = arr.shape
     cy, cx = h / 2.0, w / 2.0
@@ -111,39 +117,73 @@ def is_good_frame(path: Path) -> bool:
     disk = arr[r < 0.32 * rmax * 2]
     outer = arr[r > 0.92 * rmax]
     if disk.size < 1000 or outer.size < 1000:
-        return False
+        return "too small"
     d_mean = float(disk.mean())
     d_std = float(disk.std())
     o_mean = float(outer.mean())
     lit = float((arr > 18.0).mean())
     # Eclipse / missing data: disk too dark or flatter than noise.
     if d_mean < 28.0 or d_std < 10.0:
-        return False
+        return "dark"
     # Disk should outshine the black field.
     if d_mean < o_mean * 2.2:
-        return False
+        return "dim"
     # Too little lit area (empty) or whole frame lit (bad stretch / artifact).
     if lit < 0.06 or lit > 0.85:
-        return False
+        return "empty"
     # Horizontal dropout / missing scan lines (e.g. 2026-09-30 17:00Z).
     streak = float(np.std(np.diff(arr.mean(axis=1))))
     if streak > 0.55:
-        return False
+        return "streak"
     # Hole in the disk (black block from a bad Helioviewer cut).
     if float((disk < 8.0).mean()) > 0.02:
-        return False
+        return "hole"
     y0, y1 = int(0.5 * h), int(0.85 * h)
     x0, x1 = int(0.15 * w), int(0.55 * w)
     if float((arr[y0:y1, x0:x1] < 8.0).mean()) > 0.12:
-        return False
+        return "hole"
     # Severe registration shift — mild AIA drift (~2% of height) is normal.
     wgt = np.clip(arr - 20.0, 0.0, None)
     wsum = float(wgt.sum())
     if wsum > 0:
         bright_cy = float((yy * wgt).sum() / wsum)
         if abs(bright_cy - cy) > 0.04 * h:
-            return False
-    return True
+            return "shift"
+    # Smeared JPEG2000: only the coarse layer decoded. A real plate scores
+    # about 1000 here. The softest good cached plate is about 660. The
+    # smeared 21 Oct file scored about 90.
+    crop = arr[int(0.32 * h) : int(0.68 * h), int(0.32 * w) : int(0.68 * w)]
+    step = max(1, min(crop.shape) // 96)
+    small = crop[::step, ::step]
+    if small.shape[0] < 8 or small.shape[1] < 8:
+        return "smear"
+    lap = (
+        small[1:-1, 1:-1] * 4
+        - small[:-2, 1:-1]
+        - small[2:, 1:-1]
+        - small[1:-1, :-2]
+        - small[1:-1, 2:]
+    )
+    if float(lap.var()) < 400.0:
+        return "smear"
+    # One side black well inside the limb. Normal corona starts about 5–8%
+    # in from the edge. A file that decoded in half starts around 15%.
+    col = arr.mean(axis=0)
+    rowm = arr.mean(axis=1)
+    margins = (
+        int(np.argmax(col > 8.0)) / w,
+        int(np.argmax(col[::-1] > 8.0)) / w,
+        int(np.argmax(rowm > 8.0)) / h,
+        int(np.argmax(rowm[::-1] > 8.0)) / h,
+    )
+    if max(margins) > 0.12:
+        return "cut"
+    return None
+
+
+def is_good_frame(path: Path) -> bool:
+    """Reject dark, blank, smeared, cropped, or off-center plates."""
+    return frame_problem(path) is None
 
 
 def download_at(when: datetime, dest: Path) -> bool:
@@ -171,8 +211,9 @@ def download_at(when: datetime, dest: Path) -> bool:
     if not part.exists() or part.stat().st_size < 40_000:
         part.unlink(missing_ok=True)
         return False
-    if not is_good_frame(part):
-        print(f"  reject bad frame {date}", flush=True)
+    problem = frame_problem(part)
+    if problem:
+        print(f"  reject {problem} {date}", flush=True)
         part.unlink(missing_ok=True)
         return False
     try:
