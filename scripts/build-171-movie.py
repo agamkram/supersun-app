@@ -49,13 +49,14 @@ SIZE = 2048  # above GB's 1024; phone-friendly
 IMAGE_SCALE = 1.2
 SCRUB_SIZE = 1024
 # Nearby minutes first. The level plate and the one with the full right-hand
-# loops were a couple of minutes off the ten-minute marks.
+# loops were a couple of minutes off the ten-minute marks. Five-minute steps
+# further out reach 19:55, the centered plate, after 19:50 is turned down.
 _near = [0]
 for _step in range(1, 21):
     _near.extend((-2 * _step, 2 * _step))
 _far = []
-for _step in range(5, 13):
-    _far.extend((-10 * _step, 10 * _step))
+for _step in range(9, 25):
+    _far.extend((-5 * _step, 5 * _step))
 OFFSETS_MIN = tuple(_near + _far)
 
 
@@ -225,6 +226,51 @@ def is_good_frame(path: Path) -> bool:
     return frame_problem(path) is None
 
 
+def limb_edges(path: Path) -> tuple[int, int, int] | None:
+    """Left and right bright limb on the middle row, plus the image width."""
+    try:
+        im = Image.open(path).convert("L")
+    except Exception:
+        return None
+    arr = np.asarray(im, dtype=np.float32)
+    h, w = arr.shape
+    idx = np.where(arr[h // 2] > 80.0)[0]
+    if len(idx) < 10:
+        return None
+    return int(idx[0]), int(idx[-1]), w
+
+
+def rigid_slide(path: Path, anchor: tuple[int, int, int] | None) -> float:
+    """Pixels both limbs moved together. 0 when the disk did not slide as a whole."""
+    if anchor is None:
+        return 0.0
+    got = limb_edges(path)
+    if got is None:
+        return 0.0
+    left, right, w = got
+    a_left, a_right, a_w = anchor
+    scale = w / a_w
+    d_left = left - a_left * scale
+    d_right = right - a_right * scale
+    if d_left * d_right <= 0:
+        return 0.0
+    if abs(d_left - d_right) > 0.004 * w:
+        return 0.0
+    return max(abs(d_left), abs(d_right))
+
+
+def slid_sideways(path: Path, anchor: tuple[int, int, int] | None) -> bool:
+    """True when the whole disk jumps sideways from the previous hour.
+
+    Slow pointing drift does not move both limbs together by this much in one
+    hour. The 21 Oct 19:50 plate does: about 22px on a 2048 image.
+    """
+    got = limb_edges(path)
+    if got is None:
+        return False
+    return rigid_slide(path, anchor) > 0.006 * got[2]
+
+
 def download_at(when: datetime, dest: Path) -> bool:
     date = when.strftime("%Y-%m-%dT%H:%M:%SZ")
     url = (
@@ -263,9 +309,18 @@ def download_at(when: datetime, dest: Path) -> bool:
     return True
 
 
-def fetch_slot(slot: datetime, dest: Path) -> datetime | None:
+def fetch_slot(
+    slot: datetime,
+    dest: Path,
+    anchor: tuple[int, int, int] | None = None,
+) -> datetime | None:
     """Fetch slot time or a nearby good substitute. Returns actual time used."""
-    if dest.exists() and dest.stat().st_size > 40_000 and is_good_frame(dest):
+    if (
+        dest.exists()
+        and dest.stat().st_size > 40_000
+        and is_good_frame(dest)
+        and not slid_sideways(dest, anchor)
+    ):
         return slot
     if dest.exists():
         print(f"  cached frame failed quality — re-fetch {slot.isoformat()}", flush=True)
@@ -273,22 +328,54 @@ def fetch_slot(slot: datetime, dest: Path) -> datetime | None:
 
     # Reuse 2h-cache plate when this hour was already baked.
     legacy = CACHE_LEGACY / dest.name
-    if legacy.exists() and legacy.stat().st_size > 40_000 and is_good_frame(legacy):
+    if (
+        legacy.exists()
+        and legacy.stat().st_size > 40_000
+        and is_good_frame(legacy)
+        and not slid_sideways(legacy, anchor)
+    ):
         CACHE.mkdir(parents=True, exist_ok=True)
         shutil.copy2(legacy, dest)
         print(f"  reuse 2h cache {dest.name}", flush=True)
         return slot
 
-    for mins in OFFSETS_MIN:
-        when = slot + timedelta(minutes=mins)
-        print(
-            f"  try {when.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-            + (f" (slot{mins:+d}m)" if mins else ""),
-            flush=True,
-        )
-        if download_at(when, dest):
-            return when
-    return None
+    closest_path = dest.with_name(f"{dest.stem}.closest.jpg")
+    closest_when: datetime | None = None
+    closest_slide = 0.0
+    try:
+        for mins in OFFSETS_MIN:
+            when = slot + timedelta(minutes=mins)
+            print(
+                f"  try {when.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                + (f" (slot{mins:+d}m)" if mins else ""),
+                flush=True,
+            )
+            if not download_at(when, dest):
+                continue
+            slide = rigid_slide(dest, anchor)
+            edges = limb_edges(dest)
+            limit = 0.006 * edges[2] if edges else 0.0
+            if slide <= limit:
+                return when
+            print(
+                f"  reject shift {when.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                flush=True,
+            )
+            if closest_when is None or slide < closest_slide:
+                closest_slide = slide
+                closest_when = when
+                shutil.copy2(dest, closest_path)
+            dest.unlink(missing_ok=True)
+        if closest_when is not None and closest_path.exists():
+            os.replace(closest_path, dest)
+            print(
+                f"  keep closest {closest_when.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                flush=True,
+            )
+            return closest_when
+        return None
+    finally:
+        closest_path.unlink(missing_ok=True)
 
 
 def fetch_all(limit: int | None) -> tuple[list[Path], list[dict]]:
@@ -298,14 +385,18 @@ def fetch_all(limit: int | None) -> tuple[list[Path], list[dict]]:
         times = times[:limit]
     paths: list[Path] = []
     log: list[dict] = []
+    anchor: tuple[int, int, int] | None = None
     for i, slot in enumerate(times):
         dest = CACHE / f"{slot.strftime('%Y%m%dT%H%M%S')}.jpg"
         print(f"[{i + 1}/{len(times)}] slot {slot.strftime('%Y-%m-%dT%H:%M:%SZ')}", flush=True)
-        used = fetch_slot(slot, dest)
+        used = fetch_slot(slot, dest, anchor)
         if used is None:
             print(f"  SKIP — no good frame near slot", flush=True)
             log.append({"slot": slot.isoformat(), "status": "skip"})
             continue
+        edges = limb_edges(dest)
+        if edges is not None:
+            anchor = edges
         paths.append(dest)
         log.append(
             {
