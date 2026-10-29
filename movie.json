@@ -1,18 +1,18 @@
 {
   "kind": "carrington-171-loop",
   "source": "AIA 171 via Helioviewer",
-  "start": "2026-10-01T18:00:00Z",
-  "end": "2026-10-28T18:00:00Z",
+  "start": "2026-10-02T18:00:00Z",
+  "end": "2026-10-29T18:00:00Z",
   "stepHours": 1,
-  "frames": 649,
-  "skipped": 0,
-  "substituted": 0,
+  "frames": 647,
+  "skipped": 2,
+  "substituted": 11,
   "durationSec": 12.0,
-  "fps": 54.0833,
+  "fps": 53.9167,
   "size": 2048,
   "imageScale": 1.2,
   "file": "carrington-171.mp4",
   "poster": "carrington-171-poster.jpg",
-  "scrubFrames": 649,
-  "built": "2026-10-28T19:13:26Z"
+  "scrubFrames": 647,
+  "built": "2026-10-29T20:06:46Z"
 }
