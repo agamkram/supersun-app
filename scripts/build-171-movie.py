@@ -48,14 +48,15 @@ SIZE = 2048  # above GB's 1024; phone-friendly
 # instrument; framing the plate to the screen hides that hard FOV edge.
 IMAGE_SCALE = 1.2
 SCRUB_SIZE = 1024
-# Try nearby times when the exact slot is junk (eclipse, blank, smear).
-# Step 10 minutes. A broken hour often has a sharp plate 20 minutes off,
-# which a half-hour search never reaches, so it keeps the smeared neighbor.
-OFFSETS_MIN = tuple(
-    off
-    for step in range(0, 13)
-    for off in ((0,) if step == 0 else (-10 * step, 10 * step))
-)
+# Nearby minutes first. The level plate and the one with the full right-hand
+# loops were a couple of minutes off the ten-minute marks.
+_near = [0]
+for _step in range(1, 21):
+    _near.extend((-2 * _step, 2 * _step))
+_far = []
+for _step in range(5, 13):
+    _far.extend((-10 * _step, 10 * _step))
+OFFSETS_MIN = tuple(_near + _far)
 
 
 def which_ffmpeg() -> str:
@@ -166,6 +167,14 @@ def frame_problem(path: Path) -> str | None:
     )
     if float(lap.var()) < 400.0:
         return "smear"
+    # Disk sitting high or low. Hours around noon are centered. The 16:10
+    # plate is about 0.9% low, so the sun drops. Good plates stay under 0.7%.
+    mid = arr[:, w // 2]
+    if np.any(mid[: h // 2] > 40.0) and np.any(mid[h // 2 :] > 40.0):
+        top = int(np.where(mid[: h // 2] > 40.0)[0][0])
+        bot = int(np.where(mid[h // 2 :] > 40.0)[0][-1] + h // 2)
+        if abs((top + bot) / 2.0 - h / 2.0) / h > 0.008:
+            return "shift"
     # One side black well inside the limb. Normal corona starts about 5–8%
     # in from the edge. A file that decoded in half starts around 15%.
     col = arr.mean(axis=0)
@@ -178,7 +187,37 @@ def frame_problem(path: Path) -> str | None:
     )
     if max(margins) > 0.12:
         return "cut"
+    # Loops chopped by a hard wall. A real corona fades out. The 21 Oct
+    # 18:40 plate scored ~68 here; a whole plate stays under ~12.
+    if _hard_edge(arr):
+        return "cut"
     return None
+
+
+def _hard_edge(arr: np.ndarray) -> bool:
+    """True when the disk meets black in a sharp step instead of fading."""
+    h, w = arr.shape
+    band = arr[int(0.35 * h) : int(0.75 * h)]
+    steps = []
+    for row in band[::8]:
+        lit = np.where(row > 12.0)[0]
+        if len(lit) == 0:
+            continue
+        right = int(lit[-1])
+        left = int(lit[0])
+        if 8 <= right <= w - 5:
+            inner = float(row[right - 6 : right - 1].mean())
+            outer = float(row[right + 1 : right + 4].mean())
+            steps.append(inner - outer)
+        if 4 <= left <= w - 8:
+            inner = float(row[left + 1 : left + 6].mean())
+            outer = float(row[left - 3 : left].mean())
+            steps.append(inner - outer)
+    if len(steps) < 8:
+        return False
+    # One bright pixel can spike a single row. The chopped flare is a wall
+    # across many rows.
+    return float(np.percentile(steps, 90)) > 30.0
 
 
 def is_good_frame(path: Path) -> bool:
